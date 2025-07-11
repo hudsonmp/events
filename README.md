@@ -1,191 +1,258 @@
-# Instagram Scraper for Patrick Henry High School
+# Instagram Event Aggregator - Playwright Edition
 
-This automated Instagram scraper downloads and stores content from Patrick Henry High School's Instagram accounts in Supabase storage.
+**🎉 RECENTLY MIGRATED:** This project has been successfully migrated from Instaloader to Playwright for improved reliability and performance.
 
-## 🎯 Features
+This automated Instagram scraper downloads and stores content from Instagram accounts using browser automation, designed specifically for event aggregation and content archival.
 
-- **Dual Mode Operation**: Initialization (3 months) vs Hourly Updates
-- **Caption Storage**: Automatically extracts and saves post captions as text files
-- **Smart Content Filtering**: Downloads posts, stories, and profile pictures (excludes reels)
-- **Organized Storage**: Files are categorized into separate storage buckets
-- **Automated Execution**: Runs every hour via GitHub Actions
+## ✨ Key Features
 
-## 📁 Storage Structure
+- **🎭 Playwright Automation**: Browser-based scraping for better reliability
+- **☁️ Supabase Integration**: Seamless cloud storage and database management
+- **📱 Content Types**: Posts, stories, profile pictures, and captions
+- **🔄 Dual Mode Operation**: Hourly updates + full initialization
+- **⚡ Self-Contained**: Single file solution for easy maintenance
+- **🛡️ Error Resilience**: Smart retry logic and error classification
+- **🚫 Reel Filtering**: Excludes reels by design for focused content
 
-The scraper organizes content into **4 storage buckets**:
+## 🏗️ Architecture
 
+### Storage Structure
 ```
-instagram-posts/          # Images and videos from posts
-├── username1/
-│   ├── phhs_athletics_2025-01-20_14-30-45_GraphImage_B1a2C3d4.jpg
-│   └── pathenry2026_2025-01-20_15-45-12_GraphVideo_C2b3D4e5.mp4
-└── username2/...
-
-instagram-stories/        # Story content (24-hour expiring)
-├── username1/
-│   ├── phhs_athletics_2025-01-20_16-20-10_StoryImage_D3c4E5f6.jpg
-│   └── phhsmun_2025-01-20_17-10-30_StoryVideo_E4d5F6g7.mp4
-└── username2/...
-
-instagram-profile-pics/   # Profile pictures
-├── username1/
-│   └── phhs_athletics_2025-01-20_12-00-00_profile_pic.jpg
-└── username2/...
-
-instagram-captions/       # Post captions as text files
-├── username1/
-│   ├── phhs_athletics_2025-01-20_14-30-45_caption_B1a2C3d4.txt
-│   └── pathenry2026_2025-01-20_15-45-12_caption_C2b3D4e5.txt
-└── username2/...
+supabase-storage/
+├── instagram-posts/         # Images and videos from posts
+├── instagram-stories/       # Story content
+├── instagram-profile-pics/  # User profile pictures  
+└── instagram-captions/      # Post captions as text files
 ```
 
-## 🔧 Setup Instructions
+### Operating Modes
+
+#### 🕐 Hourly Mode (Automated)
+- **Trigger**: GitHub Actions cron schedule
+- **Scope**: Recent posts (last 10 per account)
+- **Purpose**: Keep content up-to-date
+
+#### 🚀 Initialization Mode (Manual)
+- **Trigger**: Local execution
+- **Scope**: Last 3 months of content
+- **Purpose**: Initial setup or backfill
+
+## 🚀 Quick Start
+
+### Prerequisites
+- Python 3.11+
+- Supabase account with project setup
+- Environment variables configured
+
+### Installation
+```bash
+# Install dependencies
+pip install -r requirements_playwright.txt
+
+# Install Playwright browser
+playwright install chromium
+
+# Set environment variables
+export SUPABASE_PROJECT_URL="your_supabase_url"
+export SUPABASE_SERVICE_ROLE="your_service_role_key"
+```
+
+### Run Locally
+```bash
+python instagram_playwright_scraper.py
+```
+
+## � Setup Guide
 
 ### 1. Create Supabase Storage Buckets
 
-**Go to**: [Supabase Dashboard Storage](https://app.supabase.com/project/zofjzjdtqksqugahotcs/storage/buckets)
+**Go to**: [Supabase Dashboard Storage](https://app.supabase.com/project/YOUR_PROJECT/storage/buckets)
 
-**Create these 4 buckets** (click "New bucket" for each):
+Create these 4 buckets with public access:
 
 1. **`instagram-posts`**
-   - Name: `instagram-posts`
-   - Public: ✅ (checked)
-   - File size limit: 50MB
-   - Allowed MIME types: Leave empty (all types)
+   - Purpose: Images and videos from posts
+   - Public: ✅ Yes
 
-2. **`instagram-stories`**
-   - Name: `instagram-stories`
-   - Public: ✅ (checked)
-   - File size limit: 50MB
-   - Allowed MIME types: Leave empty (all types)
+2. **`instagram-stories`**  
+   - Purpose: Story content
+   - Public: ✅ Yes
 
 3. **`instagram-profile-pics`**
-   - Name: `instagram-profile-pics`
-   - Public: ✅ (checked)
-   - File size limit: 10MB
-   - Allowed MIME types: Leave empty (all types)
+   - Purpose: User profile pictures
+   - Public: ✅ Yes
 
 4. **`instagram-captions`**
-   - Name: `instagram-captions`
-   - Public: ✅ (checked)
-   - File size limit: 1MB
-   - Allowed MIME types: `text/plain`
+   - Purpose: Post captions as text files
+   - Public: ✅ Yes
 
-> **Important**: All buckets must be set to **Public** so the URLs are accessible.
+### 2. Configure GitHub Secrets
 
-### 2. Database Setup
+**Go to**: Repository Settings → Secrets and Variables → Actions
 
-The scraper uses these existing tables:
-- `schools` - Contains Patrick Henry High School info
-- `usernames` - Contains all Instagram usernames to scrape
+Add these secrets:
+- `SUPABASE_PROJECT_URL`: Your Supabase project URL
+- `SUPABASE_SERVICE_ROLE`: Your Supabase service role key
 
-## 🚀 Usage
+### 3. Database Setup
 
-### Local Initialization (Run Once)
+Create the required table in your Supabase database:
 
-```bash
-python instagram_scraper.py
+```sql
+CREATE TABLE usernames (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(255) NOT NULL UNIQUE,
+    school_id INTEGER DEFAULT 1,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
 ```
 
-**Interactive prompts:**
-- Choose single account or all accounts (34 total)
-- Downloads last 3 months of content
-- Uploads everything to Supabase storage
-- Saves captions as separate text files
-
-### Automatic Hourly Updates
-
-- GitHub Actions runs automatically every hour
-- Downloads only new content (fast-update mode)
-- Processes all accounts from the Supabase database
-- No user interaction required
-
-## 📋 What Gets Downloaded
-
-### ✅ Included Content:
-- **Posts**: Images and videos from regular posts
-- **Stories**: Current stories (24-hour content)
-- **Profile Pictures**: Current profile images
-- **Captions**: Post captions saved as `.txt` files
-
-### ❌ Excluded Content:
-- **Reels**: Explicitly excluded from downloads
-- **Comments**: Not downloaded
-- **IGTV**: Not specifically targeted
-- **Highlights**: Not included
-
-## 🗂️ File Naming Convention
-
-All files follow this pattern:
-```
-{username}_{date_utc}_{type}_{shortcode}.{extension}
-
-Examples:
-- phhs_athletics_2025-01-20_14-30-45_GraphImage_B1a2C3d4.jpg
-- pathenry2026_2025-01-20_15-45-12_caption_C2b3D4e5.txt
-- phhsmun_2025-01-20_16-20-10_StoryVideo_D3c4E5f6.mp4
+Add your target usernames:
+```sql
+INSERT INTO usernames (username) VALUES 
+    ('account1'),
+    ('account2'),
+    ('account3');
 ```
 
-## 🛡️ Error Handling
+## � How It Works
 
-- **Individual Failures**: Script continues if one account fails
-- **Storage Fallbacks**: Continues even if some uploads fail
-- **Duplicate Prevention**: Fast-update mode prevents re-downloading
-- **Comprehensive Logging**: Detailed logs for troubleshooting
+### Initialization Process
+1. **Browser Launch**: Starts headless Chromium browser
+2. **Profile Extraction**: Gets profile data and statistics
+3. **Content Discovery**: Finds posts from last 3 months
+4. **Media Download**: Downloads images/videos using aiohttp
+5. **Storage Upload**: Uploads everything to Supabase storage
+6. **Caption Processing**: Saves captions as separate text files
+
+### Hourly Updates
+1. **Quick Profile Check**: Updates profile information
+2. **Recent Posts**: Gets last 10 posts per account
+3. **Smart Filtering**: Excludes already processed content
+4. **Efficient Storage**: Only uploads new content
+
+## ⚙️ Configuration
+
+### Rate Limiting
+```python
+self.request_delay = 2.0      # Seconds between requests
+self.max_retries = 3          # Retry attempts for failed operations
+```
+
+### Content Filtering
+- ✅ **Included**: Posts, Stories, Profile Pictures, Captions
+- ❌ **Excluded**: Reels (by design)
+- 🕒 **Time Limit**: Last 3 months for initialization
 
 ## 📊 Monitoring
 
-### Check GitHub Actions:
-1. Go to the **Actions** tab in your repository
-2. View the "scrape-instagram" workflow
-3. Check logs for any errors or successful runs
+### Success Metrics
+- Accounts processed successfully
+- Posts downloaded per execution  
+- Error rates and types
+- Storage utilization
 
-### Check Storage Usage:
-1. Go to [Supabase Storage](https://app.supabase.com/project/zofjzjdtqksqugahotcs/storage/buckets)
-2. Click on each bucket to see uploaded files
-3. Monitor storage usage and costs
+### Logs Location
+- **Local**: Console output with timestamps
+- **GitHub Actions**: Workflow run logs
+- **Errors**: Uploaded as artifacts on failure
 
-## 🔄 Profile Changes
+## 🔍 Data Access
 
-The system automatically handles:
-- **Username Changes**: Instaloader detects and handles renames
-- **Profile Pictures**: New profile pics are downloaded
-- **Content Updates**: New posts and stories are captured
+### Storage Buckets
+1. Go to [Supabase Storage](https://app.supabase.com/project/YOUR_PROJECT/storage/buckets)
+2. Browse individual buckets for content
+3. Download files or get public URLs
 
-## 📈 Scaling
+### Database Queries
+```sql
+-- View all usernames
+SELECT * FROM usernames ORDER BY username;
 
-Currently configured for **34 Instagram accounts** from Patrick Henry High School. To add more accounts:
-
-1. Add usernames to the `usernames` table in Supabase
-2. The scraper will automatically include them in the next run
-
-## 🎮 Testing
-
-### Test Locally:
-```bash
-python instagram_scraper.py
+-- Check recent activity (if using optional metadata tables)
+SELECT username, COUNT(*) as post_count 
+FROM instagram_posts 
+WHERE created_at > NOW() - INTERVAL '24 hours'
+GROUP BY username;
 ```
 
-### Test GitHub Actions:
-1. Go to **Actions** tab
-2. Click "scrape-instagram" workflow
-3. Click "Run workflow" button
-4. Monitor the execution logs
+## 🛠️ Troubleshooting
+
+### Common Issues
+
+#### Browser Launch Failures
+```bash
+# Install system dependencies
+sudo apt-get install -y libwoff1 libopus0 libgstreamer1.0
+```
+
+#### DOM Selector Updates
+Instagram occasionally changes their page structure. Update selectors in:
+- `_get_profile_data()` method
+- `_extract_post_data()` method
+
+#### Rate Limiting
+If you hit rate limits, increase the delay:
+```python
+self.request_delay = 3.0  # Increase from 2.0
+```
+
+### Getting Help
+
+1. **Check Logs**: Review execution logs for specific errors
+2. **Verify Setup**: Ensure all environment variables are set
+3. **Test Locally**: Run initialization mode on single account
+4. **Check Storage**: Verify Supabase buckets are created correctly
+
+## 📈 Usage Instructions
+
+### Adding New Accounts
+1. Add usernames to the `usernames` table in Supabase:
+```sql
+INSERT INTO usernames (username) VALUES ('new_account');
+```
+
+### Manual Execution
+```bash
+# Full initialization for all accounts
+python instagram_playwright_scraper.py
+
+# The script will prompt for single account vs. all accounts
+```
+
+### Monitoring Automation
+- GitHub Actions runs automatically every hour
+- Check the Actions tab for execution status
+- Review logs for any failures or issues
+
+## � Migration Details
+
+This project was recently migrated from Instaloader to Playwright. See [`MIGRATION_README.md`](MIGRATION_README.md) for complete technical details, including:
+
+- Architecture differences
+- Performance improvements  
+- Serverless function requirements
+- Troubleshooting guide
+- Maintenance procedures
+
+## 📜 Legal & Ethics
+
+- ✅ **Public Content Only**: Only scrapes publicly available posts
+- ✅ **Educational Purpose**: Designed for event aggregation and archival
+- ✅ **Rate Limited**: Respects Instagram's servers with delays
+- ⚠️ **Terms Compliance**: Review Instagram's Terms of Service
+- ⚠️ **Permission Required**: Ensure you have rights to scrape target accounts
+
+## 🏷️ Version
+
+- **Current Version**: 2.0.0 (Playwright Edition)
+- **Previous Version**: 1.x (Instaloader Edition - Deprecated)
+- **Migration Date**: 2025
+- **Python Support**: 3.11+
 
 ---
 
-## 📋 Account List
-
-The scraper currently processes these Patrick Henry High School accounts:
-
-- `pathenryasb`, `phhspatriotsvolleyball`, `pathenry2026`, `phhsmun`
-- `pathenry2028`, `henrymodelun`, `patrick_henry_wrestling`, `phhs_athletics`
-- `phhsboyslacrosse`, `henryyearbook`, `henryfootball1`, `phhscollege25`
-- `phhs.youngwomeninmedicine`, `pathenrymascot`, `pathenry2025`, `phhswomensoccer`
-- `phhs.girlsflag`, `phhsenviro`, `henry_powderpuff`, `phhsmarchingband`
-- `patrickhenrywaterboys`, `phhsavid`, `phhs.blackboxtheaterco`, `phhscolorguard`
-- `phhscheer`, `phhs.swear`, `patrickhenrypolomamis`, `phhsdanceteam`
-- `phhs.mocktrial`, `phhsthriftstore`, `phhs.swim`, `linkcrewphhs`
-- `phhs_theatre`, `phhs.patsplace`
-
-Ready to capture your school's digital memories! 🎓📸
+**Status**: ✅ **Active & Maintained**  
+**Last Updated**: January 2025  
+**Technology Stack**: Python 3.11 + Playwright + Supabase + GitHub Actions
