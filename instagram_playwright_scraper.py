@@ -17,13 +17,20 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 
+# Load environment variables from .env if present
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # dotenv is optional, but recommended for local development
+
 # Playwright imports
 from playwright.async_api import async_playwright, Page, Browser, BrowserContext, Playwright
 import aiohttp
 import aiofiles
 
 # Supabase imports
-from supabase import create_client, Client
+from supabase._sync.client import create_client
 
 # Configure logging
 logging.basicConfig(
@@ -38,13 +45,8 @@ class InstagramPost:
     shortcode: str
     caption: str
     image_url: str
-    video_url: Optional[str]
     timestamp: datetime
     username: str
-    likes_count: int
-    comments_count: int
-    is_video: bool
-    post_type: str  # 'post', 'story', 'reel'
 
 @dataclass
 class InstagramProfile:
@@ -53,10 +55,6 @@ class InstagramProfile:
     full_name: str
     bio: str
     profile_pic_url: str
-    followers_count: int
-    following_count: int
-    posts_count: int
-    is_verified: bool
 
 class InstagramPlaywrightScraper:
     """Instagram scraper using Playwright for browser automation"""
@@ -69,7 +67,7 @@ class InstagramPlaywrightScraper:
         if not self.supabase_url or not self.supabase_key:
             raise ValueError("Missing SUPABASE_PROJECT_URL or SUPABASE_SERVICE_ROLE environment variables")
         
-        self.supabase: Client = create_client(self.supabase_url, self.supabase_key)
+        self.supabase = create_client(self.supabase_url, self.supabase_key)
         
         # Determine mode: hourly update (GitHub Actions) or initialization (local)
         self.is_hourly_mode = os.environ.get("GITHUB_ACTIONS") == "true"
@@ -97,6 +95,16 @@ class InstagramPlaywrightScraper:
         # Rate limiting settings
         self.request_delay = 2.0  # seconds between requests
         self.max_retries = 3
+        
+        # Authentication cookies (optional)
+        self.instagram_cookies = os.environ.get("INSTAGRAM_COOKIES")  # Format: "name1=value1; name2=value2"
+        if self.instagram_cookies:
+            logger.info("Instagram cookies loaded successfully from environment.")
+        else:
+            logger.warning("Instagram cookies not found. Scraping may be limited or blocked.")
+        
+        # Debug mode
+        self.debug_mode = os.environ.get("DEBUG_MODE", "false").lower() == "true"
         
     def _get_target_usernames(self) -> List[str]:
         """Get target usernames based on execution mode."""
@@ -129,7 +137,19 @@ class InstagramPlaywrightScraper:
         """Handle local execution mode with CLI interaction."""
         print("\n=== Instagram Playwright Scraper - Local Mode ===")
         print("This will run the INITIALIZATION script (downloads last 3 months)")
-        print("Note: Reels are excluded from downloads")
+        print("Note: Videos and reels are excluded from downloads")
+        
+        # Check if authentication is needed
+        if not self.instagram_cookies:
+            print("\n🔐 AUTHENTICATION NOTICE:")
+            print("Instagram may require authentication to access content.")
+            print("If you get blocked, set INSTAGRAM_COOKIES environment variable.")
+            print("To get cookies:")
+            print("1. Open Instagram in browser and log in")
+            print("2. Press F12 → Network tab → Reload page")
+            print("3. Click any request → Copy cookies from Request Headers")
+            print("4. Export them as: export INSTAGRAM_COOKIES='sessionid=your_session_id; ...'")
+            print()
         
         choice = input("\nDo you want to specify a single account? (y/n): ").strip().lower()
         
@@ -165,7 +185,6 @@ class InstagramPlaywrightScraper:
                     '--disable-dev-shm-usage',
                     '--disable-gpu',
                     '--disable-web-security',
-                    '--disable-features=VizDisplayCompositor'
                 ]
             )
             
@@ -215,8 +234,30 @@ class InstagramPlaywrightScraper:
             raise RuntimeError("Browser page not initialized")
             
         try:
+            # Add cookies if provided
+            if self.instagram_cookies and self.context:
+                logger.info("Adding Instagram cookies for authentication")
+                cookies = []
+                for cookie_str in self.instagram_cookies.split(';'):
+                    if '=' in cookie_str:
+                        name, value = cookie_str.strip().split('=', 1)
+                        cookies.append({
+                            'name': name.strip(),
+                            'value': value.strip(),
+                            'domain': '.instagram.com',
+                            'path': '/'
+                        })
+                await self.context.add_cookies(cookies)
+            
             await self.page.goto('https://www.instagram.com/', wait_until='networkidle', timeout=30000)
             await asyncio.sleep(3)
+            
+            # Check if we're logged in
+            current_url = self.page.url
+            if 'login' in current_url or 'accounts/login' in current_url:
+                logger.warning("Redirected to login page - authentication may be required")
+            else:
+                logger.info("Successfully navigated to Instagram")
             
             # Handle cookie acceptance if present
             try:
@@ -227,7 +268,7 @@ class InstagramPlaywrightScraper:
             except:
                 pass  # Cookie dialog might not appear
             
-            logger.info("Successfully navigated to Instagram")
+            logger.info("Instagram navigation completed")
             
         except Exception as e:
             logger.error(f"Failed to navigate to Instagram: {e}")
@@ -265,33 +306,11 @@ class InstagramPlaywrightScraper:
                 bio_element = await self.page.locator('header section div:has-text("") >> nth=-1').inner_text()
                 bio = bio_element.strip() if bio_element else ""
                 
-                # Get counts (followers, following, posts)
-                counts = await self.page.locator('header section ul li').all_inner_texts()
-                followers_count = 0
-                following_count = 0
-                posts_count = 0
-                
-                # Parse counts from the text
-                for count_text in counts:
-                    if 'followers' in count_text.lower():
-                        followers_count = self._parse_count(count_text)
-                    elif 'following' in count_text.lower():
-                        following_count = self._parse_count(count_text)
-                    elif 'posts' in count_text.lower():
-                        posts_count = self._parse_count(count_text)
-                
-                # Check if verified
-                is_verified = await self.page.locator('header section svg[aria-label="Verified"]').count() > 0
-                
                 return InstagramProfile(
                     username=username,
                     full_name=full_name,
                     bio=bio,
-                    profile_pic_url=profile_pic_url,
-                    followers_count=followers_count,
-                    following_count=following_count,
-                    posts_count=posts_count,
-                    is_verified=is_verified
+                    profile_pic_url=profile_pic_url
                 )
                 
             except Exception as e:
@@ -300,33 +319,84 @@ class InstagramPlaywrightScraper:
                 
         except Exception as e:
             logger.error(f"Failed to get profile data for {username}: {e}")
+            await self._debug_save_page(f"profile_error_{username}", str(e))
             return None
 
-    def _parse_count(self, count_text: str) -> int:
-        """Parse count text like '1.2M followers' to integer"""
+
+
+    async def _get_latest_timestamp_from_storage(self, username: str) -> Optional[datetime]:
+        """Get the latest timestamp from previously saved content for a user"""
         try:
-            # Remove non-numeric characters except . and ,
-            clean_text = ''.join(c for c in count_text if c.isdigit() or c in '.,' or c.lower() in 'kmb')
+            # Check latest timestamp from storage file naming
+            # Files are named: username_YYYY-MM-DD_HH-MM-SS_shortcode.jpg
+            loop = asyncio.get_running_loop()
+            bucket = self.supabase.storage.from_(self.buckets['posts'])
             
-            # Extract number part
-            import re
-            match = re.search(r'([\d,.]+)\s*([kmb]?)', clean_text.lower())
-            if match:
-                number_str, multiplier = match.groups()
-                number = float(number_str.replace(',', ''))
+            # List files for the user, running the sync call in an executor
+            files = await loop.run_in_executor(None, lambda: bucket.list(path=username))
+            
+            if not files:
+                return None
                 
-                if multiplier == 'k':
-                    return int(number * 1000)
-                elif multiplier == 'm':
-                    return int(number * 1000000)
-                elif multiplier == 'b':
-                    return int(number * 1000000000)
-                else:
-                    return int(number)
+            latest_timestamp = None
             
-            return 0
-        except:
-            return 0
+            for file in files:
+                filename = file.get('name', '')
+                # Extract timestamp from filename pattern: username_YYYY-MM-DD_HH-MM-SS_shortcode.jpg
+                if filename.startswith(f"{username}_") and len(filename.split('_')) >= 3:
+                    try:
+                        # Extract date and time parts
+                        parts = filename.split('_')
+                        if len(parts) >= 3:
+                            date_part = parts[1]  # YYYY-MM-DD
+                            time_part = parts[2]  # HH-MM-SS
+                            
+                            # Convert to datetime
+                            timestamp_str = f"{date_part}_{time_part}"
+                            timestamp = datetime.strptime(timestamp_str, "%Y-%m-%d_%H-%M-%S")
+                            
+                            if latest_timestamp is None or timestamp > latest_timestamp:
+                                latest_timestamp = timestamp
+                                
+                    except ValueError:
+                        continue  # Skip files with invalid timestamp format
+            
+            return latest_timestamp
+            
+        except Exception as e:
+            logger.error(f"Error getting latest timestamp for {username}: {e}")
+            return None
+
+    async def _debug_save_page(self, name: str, error: str = ""):
+        """Save page screenshot and content for debugging"""
+        if not self.debug_mode or not self.page:
+            return
+            
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            debug_dir = self.temp_dir / "debug"
+            debug_dir.mkdir(exist_ok=True)
+            
+            # Save screenshot
+            screenshot_path = debug_dir / f"{name}_{timestamp}.png"
+            await self.page.screenshot(path=screenshot_path, full_page=True)
+            
+            # Save HTML content
+            html_path = debug_dir / f"{name}_{timestamp}.html"
+            content = await self.page.content()
+            with open(html_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+            
+            # Save current URL
+            url_path = debug_dir / f"{name}_{timestamp}.url"
+            with open(url_path, 'w', encoding='utf-8') as f:
+                f.write(f"URL: {self.page.url}\n")
+                f.write(f"Error: {error}\n")
+            
+            logger.info(f"Debug files saved: {screenshot_path.name}")
+            
+        except Exception as e:
+            logger.error(f"Failed to save debug info: {e}")
 
     async def _get_posts_from_profile(self, username: str, limit_date: Optional[datetime] = None) -> List[InstagramPost]:
         """Extract posts from Instagram profile page"""
@@ -336,6 +406,11 @@ class InstagramPlaywrightScraper:
         posts = []
         
         try:
+            # Get latest timestamp from storage to avoid duplicates
+            latest_timestamp = await self._get_latest_timestamp_from_storage(username)
+            if latest_timestamp:
+                logger.info(f"Latest content timestamp for {username}: {latest_timestamp}")
+            
             # Scroll to load posts
             await self._scroll_and_load_posts()
             
@@ -345,10 +420,6 @@ class InstagramPlaywrightScraper:
             logger.info(f"Found {len(post_links)} posts for {username}")
             
             for i, link in enumerate(post_links):
-                if limit_date and self.is_hourly_mode and i >= 10:
-                    # Limit recent posts in hourly mode
-                    break
-                    
                 try:
                     href = await link.get_attribute('href')
                     if href:
@@ -356,6 +427,11 @@ class InstagramPlaywrightScraper:
                         post = await self._extract_post_data(post_url, username)
                         
                         if post:
+                            # Check if this post is newer than our latest saved content
+                            if latest_timestamp and post.timestamp <= latest_timestamp:
+                                logger.info(f"Reached already saved content for {username} (post from {post.timestamp})")
+                                break
+                                
                             # Check date limit for initialization mode
                             if limit_date and post.timestamp < limit_date:
                                 logger.info(f"Reached date limit for {username}")
@@ -370,7 +446,7 @@ class InstagramPlaywrightScraper:
                     logger.error(f"Error processing post {i} for {username}: {e}")
                     continue
             
-            logger.info(f"Extracted {len(posts)} posts for {username}")
+            logger.info(f"Extracted {len(posts)} new posts for {username}")
             return posts
             
         except Exception as e:
@@ -400,86 +476,81 @@ class InstagramPlaywrightScraper:
             raise RuntimeError("Browser page not initialized")
             
         try:
+            logger.info(f"Navigating to post: {post_url}")
             await self.page.goto(post_url, wait_until='networkidle', timeout=30000)
-            await asyncio.sleep(1)
+            await asyncio.sleep(2)
+            
+            # Check if we're being redirected to login
+            current_url = self.page.url
+            if 'login' in current_url or 'accounts/login' in current_url:
+                logger.error(f"Redirected to login page - authentication required")
+                return None
+            
+            # Check for "this page isn't available" message
+            if await self.page.locator('text="Sorry, this page isn\'t available."').count() > 0:
+                logger.warning(f"Post not available: {post_url}")
+                return None
+            
+            # Check for rate limiting
+            if await self.page.locator('text="Please wait a few minutes before you try again."').count() > 0:
+                logger.warning(f"Rate limited - waiting...")
+                await asyncio.sleep(60)
+                return None
             
             # Extract shortcode from URL
             shortcode = post_url.split('/p/')[1].split('/')[0]
             
+            # Wait for content to load
+            try:
+                await self.page.wait_for_selector('article', timeout=10000)
+            except Exception as e:
+                logger.error(f"Article element not found on {post_url}: {e}")
+                await self._debug_save_page(f"post_error_{shortcode}", str(e))
+                return None
+            
             # Get post content
-            caption_element = await self.page.locator('article div[data-testid="post-caption"] span').first
+            caption_element = self.page.locator('article div[data-testid="post-caption"] span').first
             caption = ""
             if await caption_element.count() > 0:
                 caption = await caption_element.inner_text()
+            else:
+                # Try alternative selectors
+                alt_caption = self.page.locator('article div[role="button"] span').first
+                if await alt_caption.count() > 0:
+                    caption = await alt_caption.inner_text()
             
-            # Get image/video URL
-            media_element = await self.page.locator('article img, article video').first
+            # Get image URL (only images, no videos)
+            media_element = self.page.locator('article img').first
             image_url = ""
-            video_url = None
-            is_video = False
             
             if await media_element.count() > 0:
-                tag_name = await media_element.evaluate('el => el.tagName.toLowerCase()')
-                if tag_name == 'img':
-                    image_url = await media_element.get_attribute('src') or ""
-                elif tag_name == 'video':
-                    video_url = await media_element.get_attribute('src') or ""
-                    is_video = True
+                image_url = await media_element.get_attribute('src') or ""
+            else:
+                logger.warning(f"No image found in post: {post_url}")
             
             # Get timestamp
-            time_element = await self.page.locator('article time').first
+            time_element = self.page.locator('article time').first
             timestamp = datetime.now()
             if await time_element.count() > 0:
                 datetime_attr = await time_element.get_attribute('datetime')
                 if datetime_attr:
                     timestamp = datetime.fromisoformat(datetime_attr.replace('Z', '+00:00'))
             
-            # Get engagement metrics
-            likes_count = await self._extract_likes_count()
-            comments_count = await self._extract_comments_count()
-            
+            logger.info(f"Successfully extracted post data for {shortcode}")
             return InstagramPost(
                 shortcode=shortcode,
                 caption=caption,
                 image_url=image_url,
-                video_url=video_url,
                 timestamp=timestamp,
-                username=username,
-                likes_count=likes_count,
-                comments_count=comments_count,
-                is_video=is_video,
-                post_type='post'
+                username=username
             )
             
         except Exception as e:
             logger.error(f"Error extracting post data from {post_url}: {e}")
+            await self._debug_save_page(f"post_extraction_error", str(e))
             return None
 
-    async def _extract_likes_count(self) -> int:
-        """Extract likes count from post"""
-        if not self.page:
-            return 0
-            
-        try:
-            likes_element = await self.page.locator('section span:has-text("likes"), section span:has-text("like")').first
-            if await likes_element.count() > 0:
-                likes_text = await likes_element.inner_text()
-                return self._parse_count(likes_text)
-        except:
-            pass
-        return 0
 
-    async def _extract_comments_count(self) -> int:
-        """Extract comments count from post"""
-        if not self.page:
-            return 0
-            
-        try:
-            comments_elements = await self.page.locator('article ul li').all()
-            return max(0, len(comments_elements) - 1)  # Subtract 1 for the caption
-        except:
-            pass
-        return 0
 
     async def _download_file(self, url: str, filename: str) -> Optional[Path]:
         """Download file from URL"""
@@ -505,16 +576,19 @@ class InstagramPlaywrightScraper:
             logger.error(f"Error downloading file {url}: {e}")
             return None
 
-    def _upload_file_to_storage(self, local_path: Path, storage_bucket: str, storage_path: str) -> Optional[str]:
+    async def _upload_file_to_storage(self, local_path: Path, storage_bucket: str, storage_path: str) -> Optional[str]:
         """Upload file to Supabase storage and return public URL."""
         try:
+            loop = asyncio.get_running_loop()
             bucket = self.supabase.storage.from_(storage_bucket)
             
-            with open(local_path, 'rb') as f:
-                result = bucket.upload(storage_path, f, file_options={"upsert": "true"})
+            def _upload_sync():
+                with open(local_path, 'rb') as f:
+                    bucket.upload(path=storage_path, file=f)
+                return bucket.get_public_url(storage_path)
+
+            public_url = await loop.run_in_executor(None, _upload_sync)
             
-            # Get public URL
-            public_url = bucket.get_public_url(storage_path)
             logger.info(f"Uploaded {local_path.name} to {storage_bucket}/{storage_path}")
             return public_url
             
@@ -522,7 +596,7 @@ class InstagramPlaywrightScraper:
             logger.error(f"Failed to upload {local_path} to {storage_bucket}: {e}")
             return None
 
-    def _upload_caption_to_storage(self, caption_text: str, username: str, shortcode: str, timestamp: datetime) -> Optional[str]:
+    async def _upload_caption_to_storage(self, caption_text: str, username: str, shortcode: str, timestamp: datetime) -> Optional[str]:
         """Upload caption text to storage as a text file."""
         try:
             if not caption_text or caption_text.strip() == "":
@@ -535,11 +609,11 @@ class InstagramPlaywrightScraper:
             
             # Create temporary file with caption
             temp_caption_file = self.temp_dir / caption_filename
-            with open(temp_caption_file, 'w', encoding='utf-8') as f:
-                f.write(caption_text)
+            async with aiofiles.open(temp_caption_file, 'w', encoding='utf-8') as f:
+                await f.write(caption_text)
             
             # Upload to captions bucket
-            public_url = self._upload_file_to_storage(temp_caption_file, self.buckets['captions'], storage_path)
+            public_url = await self._upload_file_to_storage(temp_caption_file, self.buckets['captions'], storage_path)
             
             # Clean up temp file
             temp_caption_file.unlink()
@@ -557,7 +631,7 @@ class InstagramPlaywrightScraper:
                 # Generate file paths
                 date_str = post.timestamp.strftime("%Y-%m-%d_%H-%M-%S")
                 
-                # Download and upload media
+                # Download and upload media (images only)
                 if post.image_url:
                     # Download image
                     image_filename = f"{username}_{date_str}_{post.shortcode}.jpg"
@@ -566,27 +640,14 @@ class InstagramPlaywrightScraper:
                     if image_path and image_path.exists():
                         # Upload to posts bucket
                         storage_path = f"{username}/{image_filename}"
-                        self._upload_file_to_storage(image_path, self.buckets['posts'], storage_path)
+                        await self._upload_file_to_storage(image_path, self.buckets['posts'], storage_path)
                         
                         # Clean up temp file
                         image_path.unlink()
                 
-                if post.video_url:
-                    # Download video
-                    video_filename = f"{username}_{date_str}_{post.shortcode}.mp4"
-                    video_path = await self._download_file(post.video_url, video_filename)
-                    
-                    if video_path and video_path.exists():
-                        # Upload to posts bucket
-                        storage_path = f"{username}/{video_filename}"
-                        self._upload_file_to_storage(video_path, self.buckets['posts'], storage_path)
-                        
-                        # Clean up temp file
-                        video_path.unlink()
-                
                 # Upload caption
                 if post.caption:
-                    self._upload_caption_to_storage(post.caption, username, post.shortcode, post.timestamp)
+                    await self._upload_caption_to_storage(post.caption, username, post.shortcode, post.timestamp)
                 
                 logger.info(f"Processed post {post.shortcode} for {username}")
                 
@@ -605,7 +666,7 @@ class InstagramPlaywrightScraper:
                 if pic_path and pic_path.exists():
                     # Upload to profile pics bucket
                     storage_path = f"{profile.username}/{pic_filename}"
-                    self._upload_file_to_storage(pic_path, self.buckets['profile_pics'], storage_path)
+                    await self._upload_file_to_storage(pic_path, self.buckets['profile_pics'], storage_path)
                     
                     # Clean up temp file
                     pic_path.unlink()
@@ -631,11 +692,10 @@ class InstagramPlaywrightScraper:
             # Get posts from last 3 months
             posts = await self._get_posts_from_profile(username, three_months_ago)
             
-            # Filter out reels and process posts
-            filtered_posts = [post for post in posts if post.post_type != 'reel']
-            await self._process_posts(filtered_posts, username)
+            # Process posts (images only, no videos/reels)
+            await self._process_posts(posts, username)
             
-            logger.info(f"Successfully scraped {username} - {len(filtered_posts)} posts processed")
+            logger.info(f"Successfully scraped {username} - {len(posts)} posts processed")
             
         except Exception as e:
             logger.error(f"Failed to scrape profile {username} for initialization: {e}")
@@ -653,11 +713,10 @@ class InstagramPlaywrightScraper:
             # Get recent posts (limit to last 10)
             posts = await self._get_posts_from_profile(username)
             
-            # Filter out reels and limit posts
-            filtered_posts = [post for post in posts[:10] if post.post_type != 'reel']
-            await self._process_posts(filtered_posts, username)
+            # Process posts (images only, no videos/reels)
+            await self._process_posts(posts, username)
             
-            logger.info(f"Successfully updated {username} - {len(filtered_posts)} posts processed")
+            logger.info(f"Successfully updated {username} - {len(posts)} posts processed")
             
         except Exception as e:
             logger.error(f"Failed to scrape profile {username} for hourly update: {e}")

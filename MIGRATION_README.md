@@ -8,6 +8,8 @@ This document outlines the complete migration from Instaloader to Playwright for
 - **Old System:** `instagram_scraper.py` using Instaloader library
 - **New System:** `instagram_playwright_scraper.py` using Playwright browser automation
 - **Deployment:** Self-contained single file solution
+- **Content Focus:** Images only, no videos/reels or engagement metrics
+- **Duplicate Prevention:** Timestamp-based checking
 
 ## Key Improvements
 
@@ -17,6 +19,8 @@ This document outlines the complete migration from Instaloader to Playwright for
 - **Better Error Handling:** Distinguishes transient vs persistent errors
 - **Rate Limiting:** Built-in delays and request throttling
 - **Headless Operation:** Optimized for server environments
+- **Timestamp-based Duplicate Prevention:** Avoids re-downloading existing content
+- **Images Only:** Simplified to focus on image content, no videos/reels
 
 ### 📊 Data Compatibility
 - **Same Supabase Schema:** Compatible with existing database structure
@@ -39,8 +43,9 @@ This document outlines the complete migration from Instaloader to Playwright for
 
 #### 1. InstagramPlaywrightScraper Class
 - **Purpose:** Main scraper using Playwright browser automation
-- **Features:** Profile extraction, post scraping, media download
+- **Features:** Profile extraction, image-only post scraping, media download
 - **Error Handling:** Transient (network timeouts) vs Persistent (blocked content)
+- **Duplicate Prevention:** Timestamp-based checking to avoid re-downloading content
 
 #### 2. Data Structures
 ```python
@@ -49,13 +54,8 @@ class InstagramPost:
     shortcode: str
     caption: str
     image_url: str
-    video_url: Optional[str]
     timestamp: datetime
     username: str
-    likes_count: int
-    comments_count: int
-    is_video: bool
-    post_type: str
 
 @dataclass
 class InstagramProfile:
@@ -63,15 +63,11 @@ class InstagramProfile:
     full_name: str
     bio: str
     profile_pic_url: str
-    followers_count: int
-    following_count: int
-    posts_count: int
-    is_verified: bool
 ```
 
 #### 3. Storage Integration
-- **Supabase Storage:** Same 4 buckets as before
-  - `instagram-posts` - Images and videos
+- **Supabase Storage:** 4 buckets for different content types
+  - `instagram-posts` - Images only (no videos/reels)
   - `instagram-stories` - Story content
   - `instagram-profile-pics` - Profile pictures
   - `instagram-captions` - Text captions as .txt files
@@ -80,9 +76,10 @@ class InstagramProfile:
 
 ### 1. Hourly Update Mode (GitHub Actions)
 - **Trigger:** Automatic via GitHub Actions cron
-- **Scope:** Recent posts only (last 10 per account)
+- **Scope:** New posts only (based on timestamp comparison)
 - **Duration:** Fast updates for new content
 - **Environment Variable:** `GITHUB_ACTIONS=true`
+- **Duplicate Prevention:** Checks latest saved timestamp per user
 
 ### 2. Initialization Mode (Local)
 - **Trigger:** Manual execution
@@ -169,9 +166,6 @@ CREATE TABLE instagram_posts (
     username VARCHAR(255),
     caption_url TEXT,
     image_url TEXT,
-    video_url TEXT,
-    likes_count INTEGER DEFAULT 0,
-    comments_count INTEGER DEFAULT 0,
     timestamp TIMESTAMP,
     created_at TIMESTAMP DEFAULT NOW()
 );
@@ -185,10 +179,6 @@ CREATE TABLE profiles (
     full_name VARCHAR(255),
     bio TEXT,
     profile_pic_url TEXT,
-    followers_count INTEGER DEFAULT 0,
-    following_count INTEGER DEFAULT 0,
-    posts_count INTEGER DEFAULT 0,
-    is_verified BOOLEAN DEFAULT FALSE,
     updated_at TIMESTAMP DEFAULT NOW()
 );
 ```
@@ -267,9 +257,10 @@ $$ LANGUAGE plpgsql;
 
 ### Key Metrics
 - **Accounts Processed:** Success rate per execution
-- **Posts Scraped:** Total content volume
+- **Posts Scraped:** Total image content volume (no videos/reels)
 - **Error Rates:** Transient vs persistent failures
 - **Execution Time:** Per account processing duration
+- **Duplicate Prevention:** Timestamp-based filtering efficiency
 
 ### Monitoring Setup
 ```python
