@@ -96,13 +96,6 @@ class InstagramPlaywrightScraper:
         self.request_delay = 2.0  # seconds between requests
         self.max_retries = 3
         
-        # Authentication cookies (optional)
-        self.instagram_cookies = os.environ.get("INSTAGRAM_COOKIES")  # Format: "name1=value1; name2=value2"
-        if self.instagram_cookies:
-            logger.info("Instagram cookies loaded successfully from environment.")
-        else:
-            logger.warning("Instagram cookies not found. Scraping may be limited or blocked.")
-        
         # Debug mode
         self.debug_mode = os.environ.get("DEBUG_MODE", "false").lower() == "true"
         
@@ -138,18 +131,6 @@ class InstagramPlaywrightScraper:
         print("\n=== Instagram Playwright Scraper - Local Mode ===")
         print("This will run the INITIALIZATION script (downloads last 3 months)")
         print("Note: Videos and reels are excluded from downloads")
-        
-        # Check if authentication is needed
-        if not self.instagram_cookies:
-            print("\n🔐 AUTHENTICATION NOTICE:")
-            print("Instagram may require authentication to access content.")
-            print("If you get blocked, set INSTAGRAM_COOKIES environment variable.")
-            print("To get cookies:")
-            print("1. Open Instagram in browser and log in")
-            print("2. Press F12 → Network tab → Reload page")
-            print("3. Click any request → Copy cookies from Request Headers")
-            print("4. Export them as: export INSTAGRAM_COOKIES='sessionid=your_session_id; ...'")
-            print()
         
         choice = input("\nDo you want to specify a single account? (y/n): ").strip().lower()
         
@@ -234,21 +215,6 @@ class InstagramPlaywrightScraper:
             raise RuntimeError("Browser page not initialized")
             
         try:
-            # Add cookies if provided
-            if self.instagram_cookies and self.context:
-                logger.info("Adding Instagram cookies for authentication")
-                cookies = []
-                for cookie_str in self.instagram_cookies.split(';'):
-                    if '=' in cookie_str:
-                        name, value = cookie_str.strip().split('=', 1)
-                        cookies.append({
-                            'name': name.strip(),
-                            'value': value.strip(),
-                            'domain': '.instagram.com',
-                            'path': '/'
-                        })
-                await self.context.add_cookies(cookies)
-            
             await self.page.goto('https://www.instagram.com/', wait_until='networkidle', timeout=30000)
             await asyncio.sleep(3)
             
@@ -280,6 +246,13 @@ class InstagramPlaywrightScraper:
             raise RuntimeError("Browser page not initialized")
             
         try:
+            # Check if browser is still alive
+            if self.browser and self.browser.is_connected():
+                logger.debug(f"Browser connection verified for {username}")
+            else:
+                logger.error(f"Browser connection lost before processing {username}")
+                return None
+                
             profile_url = f"https://www.instagram.com/{username}/"
             await self.page.goto(profile_url, wait_until='networkidle', timeout=30000)
             await asyncio.sleep(self.request_delay)
@@ -406,6 +379,13 @@ class InstagramPlaywrightScraper:
         posts = []
         
         try:
+            # Check if browser is still alive
+            if self.browser and self.browser.is_connected():
+                logger.debug(f"Browser connection verified for {username} posts")
+            else:
+                logger.error(f"Browser connection lost before getting posts for {username}")
+                return []
+                
             # Get latest timestamp from storage to avoid duplicates
             latest_timestamp = await self._get_latest_timestamp_from_storage(username)
             if latest_timestamp:
