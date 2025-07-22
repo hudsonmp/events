@@ -1,3 +1,4 @@
 .env
 .github/workflows/instagram-scraper.yml
 instagram/files/
+env_template.txt
