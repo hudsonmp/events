@@ -207,6 +207,77 @@ async def scrape_profile(profile, context):
         except Exception as e:
             print(f"❌ Error handling profile picture for {username}: {e}")
 
+        # Check and save bio to Supabase if it doesn't exist
+        print(f"Checking bio for {username}...")
+        try:
+            bio_path = f"{username}/{username}_bio.txt"
+            
+            # Check if bio already exists
+            if await file_exists_in_storage(bio_path, "instagram-bios"):
+                print(f"⏭️  Bio already exists for {username}, skipping download")
+            else:
+                # First, check for and click "more" button if it exists
+                try:
+                    more_button = page.locator('span.x1lliihq.x1plvlek.xryxfnj.x1n2onr6.x1ji0vk5.x18bv5gf.x193iq5w.xeuugli.x1fj9vlw.x13faqbe.x1vvkbs.x1s928wv.xhkezso.x1gmr53x.x1cpjm7i.x1fgarty.x1943h6x.x1i0vuye.xvs91rp.xo1l8bm.x1roi4f4.x1yc453h.x10wh9bi.xpm28yp.x8viiok.x1o7cslx:has-text("more")')
+                    if await more_button.count() > 0:
+                        await more_button.click()
+                        await page.wait_for_timeout(1000)
+                        print(f"Clicked 'more' button for {username}")
+                except Exception:
+                    pass
+                
+                # Extract bio text using specific selector
+                bio_text = None
+                try:
+                    bio_span = page.locator('span._ap3a._aaco._aacu._aacx._aad7._aade')
+                    if await bio_span.count() > 0:
+                        bio_text = await bio_span.first.inner_text()
+                        if bio_text:
+                            bio_text = bio_text.strip()
+                except Exception:
+                    pass
+                
+                # Extract link if it exists
+                link_text = None
+                try:
+                    link_div = page.locator('div._ap3a._aaco._aacw._aacz._aada._aade')
+                    if await link_div.count() > 0:
+                        link_text = await link_div.first.inner_text()
+                        if link_text:
+                            link_text = link_text.strip()
+                            # Combine bio and link
+                            if bio_text and link_text:
+                                bio_text = f"{bio_text}\n\nLink: {link_text}"
+                            elif link_text and not bio_text:
+                                bio_text = f"Link: {link_text}"
+                except Exception:
+                    pass
+                
+                if bio_text:
+                    # Upload bio to storage
+                    await upload_to_supabase(bio_text, bio_path, "instagram-bios", "text/plain")
+                    
+                    # Update profiles table with bio_file_path
+                    try:
+                        result = supabase.table('profiles').update({
+                            'bio_file_path': bio_path,
+                            'last_updated': datetime.now(timezone.utc).isoformat()
+                        }).eq('id', username_id).execute()
+                        
+                        if result.data:
+                            print(f"✅ Bio uploaded and profile updated for {username}")
+                        else:
+                            print(f"✅ Bio uploaded for {username}")
+                            
+                    except Exception as e:
+                        print(f"✅ Bio uploaded for {username}, but failed to update profile: {e}")
+                        
+                else:
+                    print(f"❌ Could not find bio text for {username}")
+                    
+        except Exception as e:
+            print(f"❌ Error handling bio for {username}: {e}")
+
         # Wait for posts grid to load with polling
         print(f"Waiting for posts grid to load for {username}...")
         post_count = 0
