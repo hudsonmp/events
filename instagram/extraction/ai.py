@@ -11,7 +11,7 @@ import base64
 import time
 import threading
 from collections import deque
-AIfrom typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple
 from pathlib import Path
 from supabase import create_client, Client
 from groq import Groq
