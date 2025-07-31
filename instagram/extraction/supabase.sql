@@ -1,6 +1,9 @@
 -- WARNING: This schema is for context only and is not meant to be run.
 -- Table order and constraints may not be valid for execution.
 
+-- Migration to make start_datetime optional
+ALTER TABLE public.events ALTER COLUMN start_datetime DROP NOT NULL;
+
 CREATE TABLE public.categories (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
   name text NOT NULL,
@@ -17,8 +20,8 @@ CREATE TABLE public.event_categories (
   event_id uuid NOT NULL,
   category_id uuid NOT NULL,
   CONSTRAINT event_categories_pkey PRIMARY KEY (event_id, category_id),
-  CONSTRAINT event_categories_category_id_fkey FOREIGN KEY (category_id) REFERENCES public.categories(id),
-  CONSTRAINT event_categories_event_id_fkey FOREIGN KEY (event_id) REFERENCES public.events(id)
+  CONSTRAINT event_categories_event_id_fkey FOREIGN KEY (event_id) REFERENCES public.events(id),
+  CONSTRAINT event_categories_category_id_fkey FOREIGN KEY (category_id) REFERENCES public.categories(id)
 );
 CREATE TABLE public.event_hosts (
   event_id uuid NOT NULL,
@@ -34,9 +37,17 @@ CREATE TABLE public.event_images (
   CONSTRAINT event_images_event_id_fkey FOREIGN KEY (event_id) REFERENCES public.events(id),
   CONSTRAINT event_images_image_id_fkey FOREIGN KEY (image_id) REFERENCES public.images(id)
 );
+CREATE TABLE public.event_tags (
+  tag text,
+  event-id uuid,
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  CONSTRAINT event_tags_pkey PRIMARY KEY (id),
+  CONSTRAINT event_tags_event-id_fkey FOREIGN KEY (event-id) REFERENCES public.events(id)
+);
 CREATE TABLE public.events (
+  url text,
   name text NOT NULL,
-  start_datetime timestamp with time zone NOT NULL,
+  start_datetime timestamp with time zone,
   end_datetime timestamp with time zone,
   school_id uuid NOT NULL,
   address text,
@@ -49,9 +60,12 @@ CREATE TABLE public.events (
   type USER-DEFINED DEFAULT 'in-person'::event_type,
   status USER-DEFINED DEFAULT 'draft'::event_status,
   profile_id uuid,
+  post_id uuid,
+  caption_id text,
   CONSTRAINT events_pkey PRIMARY KEY (id),
   CONSTRAINT events_profile_id_fkey FOREIGN KEY (profile_id) REFERENCES public.profiles(id),
-  CONSTRAINT events_school_id_fkey FOREIGN KEY (school_id) REFERENCES public.schools(id)
+  CONSTRAINT events_school_id_fkey FOREIGN KEY (school_id) REFERENCES public.schools(id),
+  CONSTRAINT events_post_id_fkey FOREIGN KEY (post_id) REFERENCES public.posts(id)
 );
 CREATE TABLE public.images (
   storage_path text NOT NULL,
@@ -109,6 +123,6 @@ CREATE TABLE public.users (
   id uuid NOT NULL,
   school_id uuid,
   CONSTRAINT users_pkey PRIMARY KEY (id),
-  CONSTRAINT users_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id),
-  CONSTRAINT users_school_id_fkey FOREIGN KEY (school_id) REFERENCES public.schools(id)
+  CONSTRAINT users_school_id_fkey FOREIGN KEY (school_id) REFERENCES public.schools(id),
+  CONSTRAINT users_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id)
 );

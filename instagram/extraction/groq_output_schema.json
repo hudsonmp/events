@@ -1,0 +1,100 @@
+{
+  "title": "Instagram Event Extraction Schema",
+  "description": "Schema for extracting event information from Instagram post images, captions, and profile bios",
+  "type": "object",
+  "properties": {
+    "events": {
+      "type": "array",
+      "description": "List of events extracted from the post content",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": ["string", "null"],
+            "description": "Name/title of the event"
+          },
+          "start_datetime": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "Start date and time of the event (ISO 8601 format with timezone), null if not specified"
+          },
+          "end_datetime": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "End date and time of the event (ISO 8601 format with timezone), null if not specified"
+          },
+          "address": {
+            "type": ["string", "null"],
+            "description": "Physical address of the event location, null if not specified"
+          },
+          "location_name": {
+            "type": ["string", "null"],
+            "description": "Name of the venue/location, null if not specified"
+          },
+          "description": {
+            "type": ["string", "null"],
+            "description": "Detailed description of the event, null if not specified"
+          },
+          "is_all_day": {
+            "type": ["boolean", "null"],
+            "description": "Whether this is an all-day event, defaults to false if null",
+            "default": false
+          },
+          "type": {
+            "type": ["string", "null"],
+            "enum": ["in-person", "virtual", "hybrid", null],
+            "description": "Type of event, defaults to in-person if null",
+            "default": "in-person"
+          },
+          "url": {
+            "type": ["string", "null"],
+            "description": "URL or link related to the event, often found in the bio (registration, more info, etc.), null if not specified"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    "categories": {
+      "type": "array", 
+      "description": "List of event categories extracted from the content",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "enum": ["event", "club", "sport", "deadline", "meeting"],
+            "description": "Category name indicating the type of activity"
+          }
+        },
+        "required": ["name"],
+        "additionalProperties": false
+      },
+      "uniqueItems": true
+    },
+    "event_tags": {
+      "type": "array",
+      "description": "List of relevant tags extracted from the content",
+      "items": {
+        "type": "object",
+        "properties": {
+          "tag": {
+            "type": "string",
+            "description": "Tag text (e.g., hashtags, keywords, themes)"
+          }
+        },
+        "required": ["tag"],
+        "additionalProperties": false
+      },
+      "uniqueItems": true
+    },
+    "extraction_confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Confidence score for the overall extraction (0-1)"
+    }
+  },
+  "required": ["events", "categories", "event_tags", "extraction_confidence"],
+  "additionalProperties": false
+} 
