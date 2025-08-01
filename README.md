@@ -14,7 +14,7 @@ This automated Instagram scraper downloads and stores content from Patrick Henry
 
 The scraper organizes content into **4 storage buckets**:
 
-```
+\`\`\`
 instagram-posts/          # Images and videos from posts
 ├── username1/
 │   ├── phhs_athletics_2025-01-20_14-30-45_GraphImage_B1a2C3d4.jpg
@@ -37,7 +37,7 @@ instagram-captions/       # Post captions as text files
 │   ├── phhs_athletics_2025-01-20_14-30-45_caption_B1a2C3d4.txt
 │   └── pathenry2026_2025-01-20_15-45-12_caption_C2b3D4e5.txt
 └── username2/...
-```
+\`\`\`
 
 ## 🔧 Setup Instructions
 
@@ -83,9 +83,9 @@ The scraper uses these existing tables:
 
 ### Local Initialization (Run Once)
 
-```bash
+\`\`\`bash
 python instagram_scraper.py
-```
+\`\`\`
 
 **Interactive prompts:**
 - Choose single account or all accounts (34 total)
@@ -117,14 +117,14 @@ python instagram_scraper.py
 ## 🗂️ File Naming Convention
 
 All files follow this pattern:
-```
+\`\`\`
 {username}_{date_utc}_{type}_{shortcode}.{extension}
 
 Examples:
 - phhs_athletics_2025-01-20_14-30-45_GraphImage_B1a2C3d4.jpg
 - pathenry2026_2025-01-20_15-45-12_caption_C2b3D4e5.txt
 - phhsmun_2025-01-20_16-20-10_StoryVideo_D3c4E5f6.mp4
-```
+\`\`\`
 
 ## 🛡️ Error Handling
 
@@ -162,9 +162,9 @@ Currently configured for **34 Instagram accounts** from Patrick Henry High Schoo
 ## 🎮 Testing
 
 ### Test Locally:
-```bash
+\`\`\`bash
 python instagram_scraper.py
-```
+\`\`\`
 
 ### Test GitHub Actions:
 1. Go to **Actions** tab
