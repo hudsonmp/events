@@ -17,7 +17,7 @@ from supabase import create_client, Client
 from groq import Groq
 from dotenv import load_dotenv
 import string
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from dateutil import parser as date_parser
 import psycopg2
 
@@ -284,10 +284,6 @@ class EventExtractor:
         # Initialize rate limiter
         self.rate_limiter = GroqRateLimiter()
         
-        # Database connection for transactional inserts
-        # Disabled direct DB connection - using PostgREST inserts instead
-        self.pg_conn = None
-        
         # Load the JSON schema for structured output
         schema_path = Path(__file__).parent / "groq_output_schema.json"
         with open(schema_path, 'r') as f:
@@ -318,8 +314,41 @@ class EventExtractor:
                 query = query.limit(limit)
                 
             posts_response = query.execute()
+            posts_data = posts_response.data if posts_response.data else []
             
-            return posts_response.data if posts_response.data else []
+            # Filter out posts older than 1 month and mark them as processed
+            current_time = datetime.now(timezone.utc)
+            one_month_ago = current_time - timedelta(days=30)
+            
+            valid_posts = []
+            old_post_ids = []
+            
+            for post in posts_data:
+                try:
+                    # Parse the created_at timestamp
+                    created_at = date_parser.parse(post.get('created_at', ''))
+                    if created_at.tzinfo is None:
+                        created_at = created_at.replace(tzinfo=timezone.utc)
+                    
+                    if created_at < one_month_ago:
+                        print(f"⏰ Post from @{post.get('profiles', {}).get('username', 'unknown')} is older than 1 month ({created_at.strftime('%Y-%m-%d')}) - marking as processed")
+                        old_post_ids.append(post['id'])
+                    else:
+                        valid_posts.append(post)
+                except Exception as date_error:
+                    print(f"⚠️ Could not parse date for post {post.get('id')}: {date_error} - including in processing")
+                    valid_posts.append(post)
+            
+            # Mark old posts as processed in batch
+            if old_post_ids:
+                try:
+                    for post_id in old_post_ids:
+                        self.supabase.table('posts').update({'processed': True}).eq('id', post_id).execute()
+                    print(f"✅ Marked {len(old_post_ids)} old posts as processed")
+                except Exception as e:
+                    print(f"⚠️ Error marking old posts as processed: {e}")
+            
+            return valid_posts
             
         except Exception as e:
             print(f"Error fetching posts: {e}")
@@ -344,6 +373,18 @@ class EventExtractor:
         profile = post_data.get('profiles', {})
         post_images = post_data.get('post_images', [])
         
+        # Parse posted date for context
+        posted_at = None
+        posted_at_str = "Unknown"
+        try:
+            if post_data.get('created_at'):
+                posted_at = date_parser.parse(post_data['created_at'])
+                if posted_at.tzinfo is None:
+                    posted_at = posted_at.replace(tzinfo=timezone.utc)
+                posted_at_str = posted_at.strftime('%A, %B %d, %Y at %I:%M %p UTC')
+        except Exception as e:
+            print(f"⚠️ Could not parse posted date: {e}")
+        
         # Read caption content if available
         caption_content = None
         if post_data.get('caption_path'):
@@ -356,13 +397,16 @@ class EventExtractor:
             if file_bio:
                 bio_content = file_bio
         
-        # Prepare text content for Groq
+        # Prepare text content for Groq with posting context
         text_content = f"""
         Instagram Profile: @{profile.get('username', 'unknown')}
         
         Bio: {bio_content or 'No bio available'}
         
         Post Caption: {caption_content or 'No caption available'}
+        
+        **POSTING CONTEXT:**
+        This post was published on: {posted_at_str}
         """
         
         # Prepare image attachments (limit to 3 as per Groq's vision limit)
@@ -390,7 +434,9 @@ class EventExtractor:
             'post_id': post_data.get('id'),
             'username': profile.get('username'),
             'profile_id': profile.get('id'),
-            'school_id': profile.get('school_id')
+            'school_id': profile.get('school_id'),
+            'posted_at': posted_at,
+            'posted_at_str': posted_at_str
         }
     
     def extract_events_with_groq(self, request_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -402,73 +448,106 @@ class EventExtractor:
             current_year = current_datetime.year
             
             system_prompt = f"""
-            # 🎯 Instagram Event-Extraction – Strategy Guide
+You are an **Event Intelligence Agent** extracting school events from Instagram posts.
 
-You are an **Event Intelligence Agent**.
-
-**CURRENT DATE**: {current_date_str}
+**CURRENT DATE/TIME**: {current_date_str} ({current_datetime.strftime('%A')})
 **CURRENT YEAR**: {current_year}
-**NOTE**: You must handle all date validation. Do not extract past events.
 
-1. Scope of evidence  
-   • Scrutinise caption, profile bio, and all visible text in up to three images.  
-   • Mine dates, times, venues, links, hashtags, and any hint of audience or purpose.  
-   • **CRITICAL**: When you see schedules with multiple time slots, create separate events for each unique combination of audience + time.
+**CRITICAL: ANNOUNCEMENT vs NEWS DETECTION - APPLY FIRST**:
+ONLY extract events from posts that are **ANNOUNCEMENTS** of future activities, NOT news sharing or status updates.
 
-2. Event splitting rules  
-   • If different groups (grades, genders, levels) have different dates OR times, create one event per group.
-   • **LEVEL SPECIFICATION**: Each event title and description MUST clearly specify the target level/audience
-   • **Example**: "Registration - Seniors: July 31st (A-L: 8-11am, M-Z: 12-3pm)" = TWO events:
-     - "Senior Registration 📚 (A-L)" on July 31st 8-11am with description targeting seniors A-L
-     - "Senior Registration 📚 (M-Z)" on July 31st 12-3pm with description targeting seniors M-Z
-   • **Multi-level events**: "JV and Varsity tryouts" = TWO separate events: "JV Basketball Tryouts" and "Varsity Basketball Tryouts"
-   • Each event gets its own specific title, time slot, level-targeted description, and appropriate tags.
+**✅ EXTRACT from posts that:**
+- Announce upcoming events with clear calls-to-action: "Join us Friday for...", "Don't miss our dance next week", "Tryouts will be held..."
+- Contain invitation language: "Come to...", "Sign up for...", "Register by...", "Applications due..."
+- Use future-oriented language: "will be", "is coming", "save the date", "mark your calendars"
+- Include specific future dates/times with actionable context
+- Share ongoing information with specific future dates: "We meet every Tuesday"
 
-3. **DATE VALIDATION RULES** - STRICTLY ENFORCE:
-   • **NO PAST EVENTS**: Events must be on or after {current_date_str}. If an event date is before today, DO NOT include it as an event.
-   • **Year handling**: 
-     - If NO year is specified, assume {current_year}
-     - If year IS specified and it's a past year, only include it if the context makes it absolutely clear this is intentional (like "since 2019" or "annual event started in 2020")
-     - For ambiguous dates like "March 15th", assume {current_year}
-   • **Relative dates**: Resolve "next Friday", "tomorrow", "this weekend" based on current date {current_date_str}
-   • **CRITICAL**: If you're unsure about a date, err on the side of caution and don't include the event
+**❌ DO NOT EXTRACT from posts that:**
+- Share updates about past events: "We had an amazing game yesterday", "Thanks to everyone who came", "Great turnout at last night's..."
+- Make general statements without dates: "We are the chess club", "Our team practices hard", "Drama club is awesome"
+- Share achievements or results: "We won the championship", "Congratulations to our players", "Great job team"
+- Post photos/memories from past events without future context
+- Share ongoing information without specific future dates: "We are going to Big Bear to train" (unless announcing next specific meeting)
 
-4. URL hunting  
-   • Use the first relevant link in the caption; if none, scan the bio; if still none, leave blank.
+**CRITICAL TEMPORAL CONTEXT**: 
+- The post you're analyzing has a specific publication date/time provided in the content
+- Resolve ALL relative dates ("this Friday", "next week", "tomorrow") against the POST DATE, not current date
+- Then validate if those resolved dates are still upcoming compared to TODAY ({current_date_str})
+- If a post says "this Friday" and was posted 2 weeks ago, that Friday has already passed - SKIP IT
 
-5. **AUDIENCE & LEVEL TARGETING** - CRITICAL:
-   • **Title specificity**: ALWAYS include the specific level/audience in the title when events target particular groups
-     - Examples: "JV Basketball Tryouts 🏀", "Senior Grad Night 🎓", "Freshman Orientation 📚", "Varsity Soccer vs. Lincoln ⚽"
-     - If multiple levels: Create separate events with distinct titles for each level
-   • **Description depth**: Write 3-4 detailed, engaging sentences that include:
-     - Specific audience (grade level, team level, gender, etc.)
-     - Inferred context from post/bio (school traditions, typical procedures, etc.)
-     - Practical details (what to bring, dress code, prerequisites, etc.)
-     - Excitement and school spirit elements
-   • **Tag consistency**: Ensure level-specific tags match the title and description (e.g., "JV", "Varsity", "Freshman", "Senior")
+## 1. DATE RESOLUTION & VALIDATION - STRICTLY ENFORCE:
 
-6. Writing style enhancement:
-   • Title: ≤ 8 words, punchy, memorable, MUST include level/audience, may include fitting emoji
-   • Description: 3-4 sentences with rich detail, inferred context, and practical information. Include 1-2 emojis naturally.
+**Step 1: Resolve relative dates against POST DATE**
+- "this Friday" = the Friday of the week the post was published
+- "next Friday" = the Friday after the post publication week  
+- "tomorrow" = the day after the post was published
+- "at lunch today" = lunchtime (~12:00 PM) on the day the post was published
 
-7. Tag strategy  
-   • Produce **≥ 10 tags** mixing specific and broad terms so searches never miss the event.  
-     – **LEVEL-SPECIFIC REQUIRED**: Always include level/audience tags (varsity, JV, freshman, senior, girls, boys, etc.)
-     – Specific: gender (girls, boys), level (varsity, JV), sport/activity (basketball, robotics), grade (freshman, seniors).  
-     – Broad: community, schoolSpirit, orientation, registration, athletics, arts.  
-   • Strip '#', remove punctuation, convert to singular TitleCase.
+**Step 2: Validate against CURRENT DATE**
+- ONLY include events that occur on or after {current_date_str}
+- If post date context shows an event has passed, SKIP IT entirely
+- If you can't determine the exact date, err on the side of caution and SKIP
 
-8. Quality checklist before replying  
-   ✅ Every event is on or after {current_date_str} (NO PAST EVENTS).  
-   ✅ **LEVEL/AUDIENCE in title** - Each title specifies the target level/audience when applicable.
-   ✅ **DETAILED descriptions** - 3-4 sentences with specific audience, inferred context, and practical details.
-   ✅ **LEVEL-SPECIFIC tags** - Tags include relevant audience/level identifiers.
-   ✅ At least one category chosen, ≥ 10 tags generated.  
-   ✅ All metadata consistent and plausible.  
-   ✅ Complex schedules split into individual events per time slot.
-   ✅ Dates are properly formatted and validated against current date.
+**Step 3: Future date limits**
+- REJECT events more than 120 days in the future UNLESS a specific year is mentioned
+- If someone posts "March 15th" in December, it likely means next year - but without year specified, assume this year and reject if >120 days
 
-After thinking through these steps, output the final object only—no commentary.
+**Step 4: Time defaults**
+- If date is clear but time is vague: "at lunch" = 12:00 PM, "after school" = 4:00 PM
+- If only date given (no time), set as all-day event
+- Avoid defaulting to midnight - use contextual times or all-day
+
+## 2. CATEGORY CLASSIFICATION - MAX 2 PER EVENT:
+
+**SPORT**: Athletic competitions, tryouts, practices, games
+- Examples: "Basketball tryouts", "Soccer game vs. rivals", "Track meet", "Tennis practice"
+- NOT for: athletic club meetings (use "club")
+
+**CLUB**: Organization meetings, club activities, student groups  
+- Examples: "Drama club auditions", "Robotics team meeting", "Student government", "Chess club tournament"
+- Includes: tryouts for clubs (not sports), club fundraisers
+
+**EVENT**: General school events, social gatherings, performances
+- Examples: "Homecoming dance", "Talent show", "School assembly", "Graduation ceremony"
+- NOT for: specific academic or athletic activities
+
+**DEADLINE**: Time-sensitive requirements, applications, submissions
+- Examples: "FAFSA due Monday", "College app deadline", "Permission slip return date", "Yearbook photo submissions"
+- ONLY for actual deadlines, not event reminders
+
+**MEETING**: Formal meetings, parent conferences, academic sessions
+- Examples: "Parent-teacher conferences", "College counseling session", "Honor society meeting"
+- NOT for: club meetings (use "club"), sports meetings (use "sport")
+
+## 3. AUDIENCE TARGETING & SPLITTING:
+- Create separate events for different audiences/times
+- Include specific level in title: "JV Basketball Tryouts", "Senior Graduation Pictures"  
+- Split multi-level events: "JV and Varsity tryouts" = 2 separate events
+
+## 4. ENHANCED TAGGING - TARGET ~30 TAGS:
+- Use single words only: "Basketball" not "Basketball Team"
+- Include variations: "Soccer", "Football" for soccer posts
+- Cover multiple search angles: sport name, level, gender, general terms
+- Examples: "Basketball", "Tryouts", "JV", "Girls", "Athletics", "Sports", "Team", "Competition", "School", "Students"
+
+## 5. WRITING STANDARDS:
+- **Title**: ≤8 words, include audience level, optional emoji
+- **Description**: 3-4 sentences with specific details, context, practical info
+- **Categories**: Exactly 1-2 categories, be specific about distinctions
+- **Tags**: ~30 single-word tags covering all search angles
+
+## 6. QUALITY CHECKLIST:
+✅ Resolved relative dates against POST date, then validated against current date
+✅ No events in the past (before {current_date_str})
+✅ No events >120 days future without specified year
+✅ Contextual times used ("lunch"=12PM, "after school"=4PM)
+✅ 1-2 specific categories chosen correctly
+✅ Audience level in title when applicable
+✅ ~30 relevant single-word tags
+✅ All-day events when time is ambiguous
+
+**OUTPUT**: JSON object only, no commentary.
             """
             
             # Prepare messages - start with text content and images in one message
@@ -489,7 +568,7 @@ After thinking through these steps, output the final object only—no commentary
                 }
             ]
             
-            model = "meta-llama/llama-4-scout-17b-16e-instruct"
+            model = "meta-llama/llama-4-scout-17b-16e-instruct"  # User's preferred model
             
             # Check rate limits and wait if necessary
             if not self.rate_limiter.check_and_wait_if_needed(messages, model):
@@ -512,7 +591,7 @@ After thinking through these steps, output the final object only—no commentary
                                 "schema": self.output_schema
                             }
                         },
-                        temperature=0.3,  # Low temperature for consistent extraction
+                        temperature=0.4,  # Slightly higher temperature for better reasoning
                         max_tokens=4000
                     )
                     
@@ -585,7 +664,7 @@ After thinking through these steps, output the final object only—no commentary
             tag = tag[:-1]
         return tag.title()
     
-    def _validate_event(self, raw_event: Dict[str, Any], top_level_categories: List[Dict] = None, top_level_tags: List[Dict] = None) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    def _validate_event(self, raw_event: Dict[str, Any], top_level_categories: List[Dict] = None, top_level_tags: List[Dict] = None, posted_at: datetime = None) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
         """Validate and normalize a single event dict. Returns (cleaned_dict, reason) where reason is 'past' if event is in the past, 'validation_failed' if validation failed, or None if successful."""
         start = self._to_utc(raw_event.get('start_datetime'))
         end = self._to_utc(raw_event.get('end_datetime'))
@@ -620,6 +699,23 @@ After thinking through these steps, output the final object only—no commentary
                 print(f"    ⚠️ Error parsing start_datetime for past event check: {e}")
                 # Continue processing if we can't parse the date
         
+        # Check for events too far in the future (>120 days) unless year is specified
+        if start:
+            try:
+                start_dt = date_parser.parse(start)
+                current_time = datetime.now(timezone.utc)
+                days_in_future = (start_dt - current_time).days
+                
+                # Check if year was explicitly mentioned in the original event text
+                event_text = f"{raw_event.get('name', '')} {raw_event.get('description', '')}"
+                has_explicit_year = any(str(year) in event_text for year in range(2024, 2030))
+                
+                if days_in_future > 120 and not has_explicit_year:
+                    print(f"    📅 Event '{raw_event.get('name', 'Unnamed')}' is more than 120 days in future ({days_in_future} days) without explicit year - likely incorrect date, skipping")
+                    return None, 'validation_failed'
+            except Exception as e:
+                print(f"    ⚠️ Error parsing start_datetime for future limit check: {e}")
+        
         is_all_day = bool(raw_event.get('is_all_day'))
         event_type = (raw_event.get('type') or 'in-person').lower()
         if event_type not in self.TYPE_ENUM:
@@ -650,27 +746,40 @@ After thinking through these steps, output the final object only—no commentary
         # Categories & tags - use top-level ones from Groq response
         categories = []
         if top_level_categories:
-            categories = [c.get('name', '').lower() for c in top_level_categories if c.get('name')]
+            for c in top_level_categories:
+                if isinstance(c, dict) and c.get('name'):
+                    categories.append(c.get('name', '').lower())
+                elif isinstance(c, str) and c.strip():
+                    categories.append(c.strip().lower())
             categories = [c if c in self.CATEGORY_ENUM else 'event' for c in categories]
         
         tags = []
         if top_level_tags:
-            tags = [self._normalize_tag(t.get('tag', '')) for t in top_level_tags if t.get('tag')]
+            for t in top_level_tags:
+                if isinstance(t, dict) and t.get('tag'):
+                    tags.append(self._normalize_tag(t.get('tag', '')))
+                elif isinstance(t, str) and t.strip():
+                    tags.append(self._normalize_tag(t.strip()))
         
         # Fallback: also check inside the event in case Groq put them there
         if not categories:
-            categories = [c.get('name', '').lower() for c in raw_event.get('categories', []) if c.get('name')]
+            for c in raw_event.get('categories', []):
+                if isinstance(c, dict) and c.get('name'):
+                    categories.append(c.get('name', '').lower())
+                elif isinstance(c, str) and c.strip():
+                    categories.append(c.strip().lower())
             categories = [c if c in self.CATEGORY_ENUM else 'event' for c in categories]
         
         if not tags:
-            tags = [self._normalize_tag(t.get('tag', '')) for t in raw_event.get('event_tags', []) if t.get('tag')]
+            for t in raw_event.get('event_tags', []):
+                if isinstance(t, dict) and t.get('tag'):
+                    tags.append(self._normalize_tag(t.get('tag', '')))
+                elif isinstance(t, str) and t.strip():
+                    tags.append(self._normalize_tag(t.strip()))
         
         # DEDUPLICATE categories and tags to prevent constraint violations
         categories = list(dict.fromkeys(categories))  # Preserves order while removing duplicates
         tags = list(dict.fromkeys(tags))  # Preserves order while removing duplicates
-            
-        print(f"    📋 Final categories for this event: {categories}")
-        print(f"    🏷️ Final tags for this event: {tags}")
         
         cleaned['categories'] = categories
         cleaned['tags'] = tags
@@ -679,62 +788,21 @@ After thinking through these steps, output the final object only—no commentary
     def _get_or_create_category_ids(self, cat_names: List[str]) -> List[str]:
         ids = []
         for name in cat_names:
-            print(f"      🔍 Looking for category: '{name}'")
-            # Try fetch
+            # Try fetch existing category
             res = self.supabase.table('categories').select('id').eq('name', name).execute()
             if res.data:
-                category_id = res.data[0]['id']
-                print(f"      ✅ Found existing category '{name}' with ID: {category_id}")
-                ids.append(category_id)
+                ids.append(res.data[0]['id'])
             else:
-                print(f"      ➕ Creating new category: '{name}'")
-                # Create category
+                # Create new category
                 insert_res = self.supabase.table('categories').insert({'name': name}).execute()
                 if insert_res.data:
-                    category_id = insert_res.data[0]['id']
-                    print(f"      ✅ Created category '{name}' with ID: {category_id}")
-                    ids.append(category_id)
+                    ids.append(insert_res.data[0]['id'])
                 else:
                     print(f"      ❌ Failed to create category '{name}'")
         return ids
     
     def _insert_transaction(self, event: Dict[str, Any], profile_id: str, school_id: str, post_id: str = None, caption_id: str = None) -> bool:
-        """Insert event, categories, and tags in one transaction using psycopg2 if available; fallback to sequential REST if not."""
-        if self.pg_conn:
-            try:
-                # start_datetime can now be None - database allows it
-                start_dt = event['start_datetime']  # Can be None
-                
-                cur = self.pg_conn.cursor()
-                cur.execute("""
-                    INSERT INTO events (url, name, start_datetime, end_datetime, school_id, address, location_name, description, is_all_day, type, status, profile_id, post_id, caption_id)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'active', %s, %s, %s)
-                    RETURNING id
-                """, (
-                    event['url'], event['name'], start_dt, event['end_datetime'], school_id,
-                    event['address'], event['location_name'], event['description'], event['is_all_day'], event['type'], profile_id, post_id, caption_id
-                ))
-                event_id = cur.fetchone()[0]
-                # Categories
-                for cat_name in event['categories']:
-                    cur.execute("SELECT id FROM categories WHERE name=%s", (cat_name,))
-                    row = cur.fetchone()
-                    if row:
-                        cat_id = row[0]
-                    else:
-                        cur.execute("INSERT INTO categories (name) VALUES (%s) RETURNING id", (cat_name,))
-                        cat_id = cur.fetchone()[0]
-                    cur.execute("INSERT INTO event_categories (event_id, category_id) VALUES (%s, %s)", (event_id, cat_id))
-                # Tags
-                for tag in event['tags']:
-                    cur.execute("INSERT INTO event_tags (\"event-id\", tag) VALUES (%s, %s)", (event_id, tag))
-                self.pg_conn.commit()
-                return True
-            except Exception as e:
-                print(f"Transaction failed: {e}")
-                self.pg_conn.rollback()
-                return False
-        # Fallback REST (non-transactional)
+        """Insert event, categories, and tags using Supabase REST API."""
         try:
             # start_datetime can now be None - database allows it
             start_dt = event['start_datetime']  # Can be None
@@ -763,46 +831,33 @@ After thinking through these steps, output the final object only—no commentary
                 return False
             event_id = insert_res.data[0]['id']
             # Categories
-            print(f"    🏷️  Inserting {len(event['categories'])} categories: {event['categories']}")
             cat_ids = self._get_or_create_category_ids(event['categories'])
-            print(f"    🏷️  Category IDs: {cat_ids}")
             
+            # Link categories and tags with simplified error handling
             for cid in cat_ids:
                 try:
-                    cat_res = self.supabase.table('event_categories').insert({'event_id': event_id, 'category_id': cid}).execute()
-                    print(f"    ✅ Category {cid} linked to event")
-                except Exception as cat_error:
-                    # Check if it's a duplicate key error (constraint violation)
-                    if "duplicate key value violates unique constraint" in str(cat_error):
-                        print(f"    ⚠️ Category {cid} already linked to event (skipping duplicate)")
-                    else:
-                        print(f"    ❌ Failed to link category {cid}: {cat_error}")
-                        raise cat_error  # Re-raise non-duplicate errors
+                    self.supabase.table('event_categories').insert({'event_id': event_id, 'category_id': cid}).execute()
+                except Exception as e:
+                    if "duplicate key" not in str(e):  # Only log non-duplicate errors
+                        print(f"    ❌ Failed to link category {cid}: {e}")
+                        raise
                 
             # Tags
-            print(f"    🏷️  Inserting {len(event['tags'])} tags: {event['tags']}")
             for tag in event['tags']:
                 try:
-                    tag_res = self.supabase.table('event_tags').insert({'event-id': event_id, 'tag': tag}).execute()
-                    print(f"    ✅ Tag '{tag}' added to event")
-                except Exception as tag_error:
-                    # Check if it's a duplicate key error (constraint violation)
-                    if "duplicate key value violates unique constraint" in str(tag_error):
-                        print(f"    ⚠️ Tag '{tag}' already added to event (skipping duplicate)")
-                    else:
-                        print(f"    ❌ Failed to add tag '{tag}': {tag_error}")
-                        raise tag_error  # Re-raise non-duplicate errors
+                    self.supabase.table('event_tags').insert({'event-id': event_id, 'tag': tag}).execute()
+                except Exception as e:
+                    if "duplicate key" not in str(e):  # Only log non-duplicate errors
+                        print(f"    ❌ Failed to add tag '{tag}': {e}")
+                        raise
                 
             print(f"    🎉 Event insertion complete!")
             return True
         except Exception as e:
-            print(f"    ❌ REST insertion failed with error: {e}")
-            print(f"    📝 Error type: {type(e).__name__}")
-            import traceback
-            print(f"    📝 Full traceback: {traceback.format_exc()}")
+            print(f"    ❌ Event insertion failed: {e}")
             return False
     
-    def validate_and_insert(self, extracted_data: Dict[str, Any], post_data: Dict[str, Any]) -> bool:
+    def validate_and_insert(self, extracted_data: Dict[str, Any], post_data: Dict[str, Any], posted_at: datetime = None) -> bool:
         """Validate Groq output and insert into DB. Returns True on success."""
         profile_id = post_data.get('profiles', {}).get('id')
         school_id = post_data.get('profiles', {}).get('school_id')
@@ -814,15 +869,13 @@ After thinking through these steps, output the final object only—no commentary
         top_level_categories = extracted_data.get('categories', [])
         top_level_tags = extracted_data.get('event_tags', [])
         print(f"🔍 Validating {len(events)} events...")
-        print(f"📋 Top-level categories: {top_level_categories}")
-        print(f"🏷️ Top-level tags: {top_level_tags}")
         
         success_any = False
         past_count = 0
         validation_failed_count = 0
         for i, raw_event in enumerate(events, 1):
             print(f"  Validating event {i}: {raw_event.get('name', 'Unnamed')}")
-            cleaned, failure_reason = self._validate_event(raw_event, top_level_categories, top_level_tags)
+            cleaned, failure_reason = self._validate_event(raw_event, top_level_categories, top_level_tags, posted_at)
             if not cleaned:
                 if failure_reason == 'past':
                     print(f"  ⏰ Event {i} is in the past – skipping.")
@@ -873,16 +926,11 @@ After thinking through these steps, output the final object only—no commentary
         if extracted_data:
             print(f"✅ Extraction successful! Events found: {len(extracted_data.get('events', []))}")
             print(f"📊 Extraction confidence: {extracted_data.get('extraction_confidence', 'N/A')}")
-            print(f"🔍 Debug - Full Groq response structure:")
-            print(f"  Keys in response: {list(extracted_data.keys())}")
-            print(f"  Categories in response: {extracted_data.get('categories', 'NOT FOUND')}")
-            print(f"  Event_tags in response: {extracted_data.get('event_tags', 'NOT FOUND')}")
-            
-            # Print extracted events for debugging
+            # Print extracted events summary
             for i, event in enumerate(extracted_data.get('events', []), 1):
                 print(f"  Event {i}: {event.get('name', 'Unnamed')} - {event.get('start_datetime', 'No date')}")
             
-            inserted = self.validate_and_insert(extracted_data, post_data)
+            inserted = self.validate_and_insert(extracted_data, post_data, request_data.get('posted_at'))
             if inserted:
                 print("💾 ✅ Successfully inserted into database")
                 # Mark post processed

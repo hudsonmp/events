@@ -97,4 +97,4 @@
   },
   "required": ["events", "categories", "event_tags", "extraction_confidence"],
   "additionalProperties": false
-} 
+}
