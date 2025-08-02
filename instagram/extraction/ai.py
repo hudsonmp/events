@@ -494,9 +494,13 @@ ONLY extract events from posts that are **ANNOUNCEMENTS** of future activities, 
 - If someone posts "March 15th" in December, it likely means next year - but without year specified, assume this year and reject if >120 days
 
 **Step 4: Time defaults**
-- If date is clear but time is vague: "at lunch" = 12:00 PM, "after school" = 4:00 PM
-- If only date given (no time), set as all-day event
-- Avoid defaulting to midnight - use contextual times or all-day
+- If date is clear but time is vague: "at lunch" = 12:00 PM, "after school" = 4:00 PM  
+- If only date is given (no time), **either** mark the event as **all-day** (`is_all_day=true`) **or** default the time to **12:00 PM** and add "Time TBD" in the description.  
+- When a numeric time is mentioned **without AM/PM**, infer the most plausible option using typical school context:  
+  • 5-9 → assume **PM** (e.g., "6" ➜ 6:00 PM – after-school hours)  
+  • 10-2 → assume **AM** (e.g., "10" ➜ 10:00 AM – morning hours)  
+  • Otherwise decide based on surrounding context (evening activities usually PM, morning meetings AM).  
+- **Never** default to midnight. Use contextual inference, all-day, or the 12 PM fallback with "Time TBD" when necessary.
 
 ## 2. CATEGORY CLASSIFICATION - MAX 2 PER EVENT:
 
@@ -568,7 +572,7 @@ ONLY extract events from posts that are **ANNOUNCEMENTS** of future activities, 
                 }
             ]
             
-            model = "meta-llama/llama-4-scout-17b-16e-instruct"  # User's preferred model
+            model = "meta-llama/llama-4-scout-17b-16e-instruct"  # Reverted to preferred model
             
             # Check rate limits and wait if necessary
             if not self.rate_limiter.check_and_wait_if_needed(messages, model):

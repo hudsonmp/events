@@ -1,14 +1,18 @@
 "use client"
 
 import type { Event } from "@/lib/types"
-import { Calendar, MapPin, UserCheck, Loader2 } from "lucide-react"
+import { Calendar, Clock, MapPin, Users, UserCheck, Loader2 } from "lucide-react"
 import Image from "next/image"
 import { useAuth } from "@/lib/contexts/auth-context"
 import { useState, useEffect } from "react"
 import { AuthModal } from "@/components/auth-modal"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
-import { rsvpToEvent, cancelRsvp, checkRsvpStatus } from "@/lib/supabase/client"
+import { createClient, rsvpToEvent, cancelRsvp, checkRsvpStatus } from "@/lib/supabase/client"
+import { motion, AnimatePresence } from "framer-motion"
+import { cardHoverVariants, buttonTapVariants, SlideUp } from "@/lib/motion"
 
 interface EventCardProps {
   event: Event
@@ -24,9 +28,20 @@ export function EventCard({ event, onClick }: EventCardProps) {
   const [isRSVPed, setIsRSVPed] = useState(false)
   const [rsvpLoading, setRsvpLoading] = useState(false)
   const [checkingRsvp, setCheckingRsvp] = useState(false)
+  const [isRSVPd, setIsRSVPd] = useState(false)
+  const [rsvpCount, setRsvpCount] = useState(0)
+  const [isLoading, setIsLoading] = useState(false)
+  const supabase = createClient()
   
-  const firstImage = event.post_images?.post_images?.[0]?.file_path
-  const imageUrl = firstImage ? getStorageUrl("instagram-posts", firstImage) : null
+  // Try to get image from event_images first, then fall back to post_images
+  const eventImage = event.event_images?.[0]?.image?.storage_path
+  const postImage = event.post_images?.post_images?.[0]?.file_path
+  
+  const imageUrl = eventImage 
+    ? getStorageUrl("event-images", eventImage)
+    : postImage 
+    ? getStorageUrl("instagram-posts", postImage)
+    : null
 
   // Check RSVP status when user is loaded
   useEffect(() => {
@@ -117,110 +132,236 @@ export function EventCard({ event, onClick }: EventCardProps) {
   }
 
   return (
-    <>
-      <div
-        className="bg-slate-50 rounded-xl shadow-sm border p-4 flex flex-col space-y-3 transition-all hover:shadow-md cursor-pointer hover:scale-[1.02]"
+    <motion.div
+      variants={cardHoverVariants}
+      initial="rest"
+      whileHover="hover"
+      whileTap={{ scale: 0.98 }}
+      layout
+      className="h-full"
+    >
+      <Card 
+        className="h-full cursor-pointer overflow-hidden bg-white border-slate-200 hover:shadow-lg transition-shadow duration-200"
         onClick={onClick}
       >
-        {imageUrl && (
-          <div className="relative w-full h-40">
-            <Image
-              src={imageUrl || "/placeholder.svg"}
-              alt={event.name || "Untitled Event"}
-              fill={true}
-              className="object-cover rounded-lg"
-              onError={(e) => {
-                const target = e.target as HTMLImageElement
-                target.src = "/placeholder.svg?height=160&width=320&text=Image+Not+Found"
-              }}
-            />
-          </div>
-        )}
-        <div className="flex-grow space-y-2 flex flex-col">
-          <h3 className="font-semibold text-slate-800 line-clamp-2">{event.name || "Untitled Event"}</h3>
-
-          <div className="space-y-1 text-sm text-slate-600">
-            {event.start_datetime && (
-              <div className="flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-slate-400" />
-                <span>
-                  {formatDate(event.start_datetime)}
-                  {!event.is_all_day && ` at ${formatTime(event.start_datetime)}`}
-                </span>
+        <div className="relative">
+          {/* Image */}
+          <div className="relative h-48 bg-gradient-to-br from-slate-100 to-slate-200 overflow-hidden">
+            {event.event_images && event.event_images.length > 0 ? (
+              <Image
+                src={getStorageUrl("event-images", event.event_images[0].image.storage_path)}
+                alt={event.name}
+                fill
+                className="object-cover"
+                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement
+                  target.src = "/placeholder.svg?height=200&width=300"
+                }}
+              />
+            ) : event.post_images?.post_images && event.post_images.post_images.length > 0 ? (
+              <Image
+                src={getStorageUrl("post-images", event.post_images.post_images[0].file_path)}
+                alt={event.name}
+                fill
+                className="object-cover"
+                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement
+                  target.src = "/placeholder.svg?height=200&width=300"
+                }}
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center">
+                <Calendar className="h-16 w-16 text-slate-400" />
               </div>
             )}
-            {event.location_name && (
-              <div className="flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-slate-400" />
-                <span>{event.location_name}</span>
-              </div>
+            
+            {/* Gradient overlay */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent" />
+            
+            {/* Category badges */}
+            {event.categories && event.categories.length > 0 && (
+              <motion.div 
+                className="absolute top-3 left-3"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.2 }}
+              >
+                <Badge className="bg-white/90 text-slate-800 backdrop-blur-sm">
+                  {event.categories[0].category.name}
+                </Badge>
+              </motion.div>
             )}
-          </div>
-
-          <p className="text-sm text-slate-500 line-clamp-3 flex-grow">
-            {event.description || "No description available"}
-          </p>
-
-          <div className="flex gap-2 flex-wrap pt-2">
-            {event.categories
-              ?.filter(({ category }) => category?.name)
-              .map(({ category }) => (
-                <span
-                  key={category.name}
-                  className="px-2.5 py-1 bg-emerald-100 text-emerald-800 text-xs font-medium rounded-full capitalize"
-                >
-                  {category.name}
-                </span>
-              )) || []}
-            <span className="px-2.5 py-1 bg-amber-100 text-amber-800 text-xs font-medium rounded-full capitalize">
-              {event.type}
-            </span>
-          </div>
-
-          <div className="flex items-center justify-between pt-3 border-t mt-auto">
-            {event.profile && (
-              <div className="flex items-center gap-2">
-                <Image
-                  src={getProfilePicUrl(event.profile.username) || "/placeholder.svg"}
-                  alt={event.profile.username}
-                  width={24}
-                  height={24}
-                  className="w-6 h-6 rounded-full object-cover"
-                  onError={(e) => {
-                    const target = e.target as HTMLImageElement
-                    target.src = "/placeholder.svg?height=24&width=24&text=Profile"
-                  }}
-                />
-                <span className="text-xs text-slate-500">@{event.profile.username}</span>
-              </div>
-            )}
-            <Button
-              onClick={handleRSVP}
-              variant={isRSVPed ? "outline" : "default"}
-              size="sm"
-              disabled={rsvpLoading || checkingRsvp}
-              className={`inline-flex items-center gap-1 text-sm font-medium ${
-                isRSVPed 
-                  ? "border-emerald-600 text-emerald-600 hover:bg-emerald-50" 
-                  : "bg-emerald-600 hover:bg-emerald-700 text-white"
-              }`}
+            
+            {/* RSVP Button */}
+            <motion.div 
+              className="absolute bottom-3 right-3"
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.3 }}
             >
-              {rsvpLoading || checkingRsvp ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <UserCheck className="w-3.5 h-3.5" />
-              )}
-              {checkingRsvp ? "Loading..." : isRSVPed ? "RSVP'd" : "RSVP"}
-            </Button>
+              <motion.div
+                variants={buttonTapVariants}
+                initial="rest"
+                whileTap="tap"
+              >
+                <Button
+                  size="sm"
+                  variant={isRSVPd ? "default" : "secondary"}
+                  className={`backdrop-blur-sm transition-all duration-200 ${
+                    isRSVPd 
+                      ? "bg-green-600 hover:bg-green-700 text-white" 
+                      : "bg-white/90 hover:bg-white text-slate-800"
+                  }`}
+                  onClick={handleRSVP}
+                  disabled={isLoading}
+                >
+                  <AnimatePresence mode="wait">
+                    {isLoading ? (
+                      <motion.div
+                        key="loading"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="flex items-center gap-1"
+                      >
+                        <motion.div
+                          animate={{ rotate: 360 }}
+                          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                          className="w-3 h-3 border border-current border-t-transparent rounded-full"
+                        />
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="content"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="flex items-center gap-1"
+                      >
+                        <Users className="h-3 w-3" />
+                        <span className="text-xs font-medium">
+                          {isRSVPd ? "Going" : "RSVP"} ({rsvpCount})
+                        </span>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </Button>
+              </motion.div>
+            </motion.div>
           </div>
-        </div>
-      </div>
 
-      <AuthModal
-        isOpen={showAuthModal}
-        onClose={() => setShowAuthModal(false)}
-        defaultTab="signup"
-      />
-    </>
+          <CardContent className="p-4">
+            <SlideUp delay={0.1}>
+              <div className="space-y-3">
+                {/* Title */}
+                <h3 className="font-semibold text-lg text-slate-800 line-clamp-2 leading-tight">
+                  {event.name}
+                </h3>
+
+                {/* Date and Time */}
+                {event.start_datetime && (
+                  <motion.div 
+                    className="flex items-center text-sm text-slate-600"
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.15 }}
+                  >
+                    <Clock className="h-4 w-4 mr-2 text-slate-400" />
+                    <span>{formatDate(event.start_datetime)}</span>
+                    {formatTime(event.start_datetime) && (
+                      <span className="ml-1">at {formatTime(event.start_datetime)}</span>
+                    )}
+                  </motion.div>
+                )}
+
+                {/* Location */}
+                {event.location_name && (
+                  <motion.div 
+                    className="flex items-center text-sm text-slate-600"
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.2 }}
+                  >
+                    <MapPin className="h-4 w-4 mr-2 text-slate-400" />
+                    <span className="line-clamp-1">{event.location_name}</span>
+                  </motion.div>
+                )}
+
+                {/* Description */}
+                {event.description && (
+                  <motion.p 
+                    className="text-sm text-slate-600 line-clamp-2"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.25 }}
+                  >
+                    {event.description}
+                  </motion.p>
+                )}
+
+                {/* Tags */}
+                {event.tags && event.tags.length > 0 && (
+                  <motion.div 
+                    className="flex flex-wrap gap-1"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.3 }}
+                  >
+                    {event.tags.slice(0, 3).map((tag, index) => (
+                      <motion.div
+                        key={tag.tag}
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ delay: 0.3 + index * 0.05 }}
+                      >
+                        <Badge variant="outline" className="text-xs">
+                          {tag.tag}
+                        </Badge>
+                      </motion.div>
+                    ))}
+                    {event.tags.length > 3 && (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ delay: 0.45 }}
+                      >
+                        <Badge variant="outline" className="text-xs">
+                          +{event.tags.length - 3}
+                        </Badge>
+                      </motion.div>
+                    )}
+                  </motion.div>
+                )}
+
+                {/* Profile */}
+                {event.profile && (
+                  <motion.div 
+                    className="flex items-center gap-2 pt-2 border-t border-slate-100"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.35 }}
+                  >
+                    <div className="relative h-6 w-6 rounded-full overflow-hidden bg-slate-200">
+                      <Image
+                        src={getProfilePicUrl(event.profile.username)}
+                        alt={event.profile.username}
+                        fill
+                        className="object-cover"
+                        sizes="24px"
+                      />
+                    </div>
+                    <span className="text-xs text-slate-500">
+                      by {event.profile.username}
+                    </span>
+                  </motion.div>
+                )}
+              </div>
+            </SlideUp>
+          </CardContent>
+        </div>
+      </Card>
+    </motion.div>
   )
 }

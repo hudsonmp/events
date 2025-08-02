@@ -22,6 +22,9 @@ async function getUserEvents(userId: string): Promise<{ upcoming: Event[], past:
         school:schools(name, address),
         post_images:posts!post_id(
           post_images(file_path)
+        ),
+        event_images:event_images(
+          image:images(id, storage_path, url)
         )
       )
     `)

@@ -76,6 +76,63 @@
   }
 }
 
+/* Quick scrolling with minimal movement */
+html {
+  scroll-behavior: auto;
+  overscroll-behavior: none;
+  scroll-snap-type: none;
+}
+
+body {
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: auto;
+  position: relative;
+  scroll-behavior: auto;
+}
+
+/* Prevent horizontal scrolling and limit vertical bounce */
+html, body {
+  -ms-overflow-style: none;
+  overflow-x: hidden;
+  overscroll-behavior-y: none;
+}
+
+/* Quick header animations with limited movement */
+header {
+  will-change: transform;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* Faster shadow transitions */
+@keyframes header-scroll {
+  from {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+  to {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+}
+
+/* Quick transitions for all interactive elements */
+* {
+  transition-property: transform, opacity, box-shadow;
+  transition-duration: 100ms;
+  transition-timing-function: ease-out;
+}
+
+/* Constrained iOS scrolling */
+@supports (-webkit-overflow-scrolling: touch) {
+  body {
+    -webkit-overflow-scrolling: auto;
+    overscroll-behavior: none;
+  }
+  
+  html {
+    -webkit-overflow-scrolling: auto;
+  }
+}
+
 /* Logo gradient with darker colors */
 .logo-gradient {
   background: linear-gradient(135deg, hsl(var(--primary-green)), hsl(var(--primary-gold)));
@@ -100,4 +157,33 @@
 
 .bg-slate-850 {
   background-color: rgb(30 41 59);
+}
+
+/* Search bar animations */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(16, 185, 129, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.5);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.5s ease-out;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
 }

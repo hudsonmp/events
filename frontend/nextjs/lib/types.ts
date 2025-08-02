@@ -24,6 +24,9 @@ export type Event = {
   post_images: {
     post_images: { file_path: string }[]
   } | null
+  event_images: {
+    image: { id: string; storage_path: string; url: string | null }
+  }[] | null
 }
 
 export type PopularEvent = {
