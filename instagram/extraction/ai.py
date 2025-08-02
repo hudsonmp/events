@@ -10,6 +10,7 @@ import sys
 import base64
 import time
 import threading
+import logging
 from collections import deque
 from typing import List, Dict, Any, Optional, Tuple
 from pathlib import Path
@@ -23,6 +24,32 @@ import psycopg2
 
 # Load environment variables
 load_dotenv()
+
+# Setup logging
+def setup_logging():
+    """Setup logging to both console and file"""
+    # Create logs directory if it doesn't exist
+    log_dir = Path(__file__).parent
+    log_dir.mkdir(exist_ok=True)
+    
+    # Create log filename with timestamp
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_filename = log_dir / f"extraction_{timestamp}.log"
+    
+    # Setup logging configuration
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(log_filename),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+    
+    return logging.getLogger(__name__)
+
+# Initialize logger
+logger = setup_logging()
 
 class GroqRateLimiter:
     """
@@ -49,10 +76,10 @@ class GroqRateLimiter:
         # Thread safety
         self.lock = threading.Lock()
         
-        print(f"🛡️ Groq Rate Limiter initialized:")
-        print(f"   RPM threshold: {self.RPM_THRESHOLD}")
-        print(f"   RPD threshold: {self.RPD_THRESHOLD}")
-        print(f"   TPM threshold: {self.TPM_THRESHOLD}")
+        logger.info(f"🛡️ Groq Rate Limiter initialized:")
+        logger.info(f"   RPM threshold: {self.RPM_THRESHOLD}")
+        logger.info(f"   RPD threshold: {self.RPD_THRESHOLD}")
+        logger.info(f"   TPM threshold: {self.TPM_THRESHOLD}")
     
     def _cleanup_old_entries(self, current_time: float):
         """Remove entries older than their respective time windows."""
@@ -116,8 +143,8 @@ class GroqRateLimiter:
             current_time = time.time()
             rpm, rpd, tpm = self._get_current_usage(current_time)
             
-            print(f"📊 Current usage: RPM={rpm}/{self.RPM_THRESHOLD}, RPD={rpd}/{self.RPD_THRESHOLD}, TPM={tpm}/{self.TPM_THRESHOLD}")
-            print(f"🔢 Estimated tokens for this request: {estimated_tokens}")
+            logger.info(f"📊 Current usage: RPM={rpm}/{self.RPM_THRESHOLD}, RPD={rpd}/{self.RPD_THRESHOLD}, TPM={tpm}/{self.TPM_THRESHOLD}")
+            logger.info(f"🔢 Estimated tokens for this request: {estimated_tokens}")
             
             # Check if any limits would be exceeded
             would_exceed_rpm = rpm >= self.RPM_THRESHOLD
@@ -133,7 +160,7 @@ class GroqRateLimiter:
                 if would_exceed_tpm:
                     exceeded_limits.append(f"TPM ({tpm + estimated_tokens}/{self.TPM_THRESHOLD})")
                 
-                print(f"🚫 Rate limits would be exceeded: {', '.join(exceeded_limits)}")
+                logger.warning(f"🚫 Rate limits would be exceeded: {', '.join(exceeded_limits)}")
                 
                 # Calculate wait time based on oldest entry that needs to expire
                 wait_times = []
@@ -156,13 +183,13 @@ class GroqRateLimiter:
                 
                 if would_exceed_rpd:
                     # For daily limits, we might need to wait up to 24 hours
-                    print("⚠️ Daily request limit reached. Consider reducing batch size or waiting until tomorrow.")
+                    logger.warning("⚠️ Daily request limit reached. Consider reducing batch size or waiting until tomorrow.")
                     return False
                 
                 if wait_times:
                     max_wait = max(wait_times)
                     if max_wait > 0:
-                        print(f"⏳ Waiting {max_wait:.1f} seconds to respect rate limits...")
+                        logger.info(f"⏳ Waiting {max_wait:.1f} seconds to respect rate limits...")
                         time.sleep(max_wait + 1)  # Add 1 second buffer
                         return self.check_and_wait_if_needed(messages, model)  # Recheck after waiting
             
@@ -180,14 +207,14 @@ class GroqRateLimiter:
         if retry_after:
             try:
                 wait_seconds = int(retry_after)
-                print(f"🚫 Received 429 response. Waiting {wait_seconds} seconds as specified in Retry-After header...")
+                logger.warning(f"🚫 Received 429 response. Waiting {wait_seconds} seconds as specified in Retry-After header...")
                 time.sleep(wait_seconds)
             except ValueError:
                 # Retry-After might be in HTTP date format
-                print(f"🚫 Received 429 response. Waiting 60 seconds (could not parse Retry-After: {retry_after})...")
+                logger.warning(f"🚫 Received 429 response. Waiting 60 seconds (could not parse Retry-After: {retry_after})...")
                 time.sleep(60)
         else:
-            print("🚫 Received 429 response. Waiting 60 seconds (no Retry-After header found)...")
+            logger.warning("🚫 Received 429 response. Waiting 60 seconds (no Retry-After header found)...")
             time.sleep(60)
     
     def update_actual_usage(self, actual_tokens_used: int):
@@ -220,17 +247,17 @@ class GroqRateLimiter:
             if rpm_limit is not None:
                 self.OFFICIAL_RPM_LIMIT = rpm_limit
                 self.RPM_THRESHOLD = int(rpm_limit * 0.9)
-                print(f"🔄 Updated RPM limit: {rpm_limit} (threshold: {self.RPM_THRESHOLD})")
+                logger.info(f"🔄 Updated RPM limit: {rpm_limit} (threshold: {self.RPM_THRESHOLD})")
             
             if rpd_limit is not None:
                 self.OFFICIAL_RPD_LIMIT = rpd_limit
                 self.RPD_THRESHOLD = int(rpd_limit * 0.9)
-                print(f"🔄 Updated RPD limit: {rpd_limit} (threshold: {self.RPD_THRESHOLD})")
+                logger.info(f"🔄 Updated RPD limit: {rpd_limit} (threshold: {self.RPD_THRESHOLD})")
             
             if tpm_limit is not None:
                 self.OFFICIAL_TPM_LIMIT = tpm_limit
                 self.TPM_THRESHOLD = int(tpm_limit * 0.9)
-                print(f"🔄 Updated TPM limit: {tpm_limit} (threshold: {self.TPM_THRESHOLD})")
+                logger.info(f"🔄 Updated TPM limit: {tpm_limit} (threshold: {self.TPM_THRESHOLD})")
     
     def get_usage_stats(self) -> Dict[str, Any]:
         """Get current usage statistics."""
@@ -265,7 +292,7 @@ class GroqRateLimiter:
             self.requests_per_minute.clear()
             self.requests_per_day.clear()
             self.tokens_per_minute.clear()
-            print("🔄 Rate limiter usage statistics reset")
+            logger.info("🔄 Rate limiter usage statistics reset")
 
 
 class EventExtractor:
@@ -331,12 +358,12 @@ class EventExtractor:
                         created_at = created_at.replace(tzinfo=timezone.utc)
                     
                     if created_at < one_month_ago:
-                        print(f"⏰ Post from @{post.get('profiles', {}).get('username', 'unknown')} is older than 1 month ({created_at.strftime('%Y-%m-%d')}) - marking as processed")
+                        logger.info(f"⏰ Post from @{post.get('profiles', {}).get('username', 'unknown')} is older than 1 month ({created_at.strftime('%Y-%m-%d')}) - marking as processed")
                         old_post_ids.append(post['id'])
                     else:
                         valid_posts.append(post)
                 except Exception as date_error:
-                    print(f"⚠️ Could not parse date for post {post.get('id')}: {date_error} - including in processing")
+                    logger.warning(f"⚠️ Could not parse date for post {post.get('id')}: {date_error} - including in processing")
                     valid_posts.append(post)
             
             # Mark old posts as processed in batch
@@ -344,14 +371,14 @@ class EventExtractor:
                 try:
                     for post_id in old_post_ids:
                         self.supabase.table('posts').update({'processed': True}).eq('id', post_id).execute()
-                    print(f"✅ Marked {len(old_post_ids)} old posts as processed")
+                    logger.info(f"✅ Marked {len(old_post_ids)} old posts as processed")
                 except Exception as e:
-                    print(f"⚠️ Error marking old posts as processed: {e}")
+                    logger.error(f"⚠️ Error marking old posts as processed: {e}")
             
             return valid_posts
             
         except Exception as e:
-            print(f"Error fetching posts: {e}")
+            logger.error(f"Error fetching posts: {e}")
             return []
     
     def read_file_content(self, file_path: str, bucket_name: str) -> Optional[str]:
@@ -365,7 +392,7 @@ class EventExtractor:
                     content = response.decode('utf-8')
                     return content
         except Exception as e:
-            print(f"Error reading file {file_path} from storage: {e}")
+            logger.error(f"Error reading file {file_path} from storage: {e}")
         return None
     
     def prepare_groq_request(self, post_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -383,7 +410,7 @@ class EventExtractor:
                     posted_at = posted_at.replace(tzinfo=timezone.utc)
                 posted_at_str = posted_at.strftime('%A, %B %d, %Y at %I:%M %p UTC')
         except Exception as e:
-            print(f"⚠️ Could not parse posted date: {e}")
+            logger.warning(f"⚠️ Could not parse posted date: {e}")
         
         # Read caption content if available
         caption_content = None
@@ -426,7 +453,7 @@ class EventExtractor:
                             }
                         })
                 except Exception as e:
-                    print(f"Error reading image {img['file_path']}: {e}")
+                    logger.error(f"Error reading image {img['file_path']}: {e}")
         
         return {
             'text_content': text_content,
@@ -576,14 +603,14 @@ ONLY extract events from posts that are **ANNOUNCEMENTS** of future activities, 
             
             # Check rate limits and wait if necessary
             if not self.rate_limiter.check_and_wait_if_needed(messages, model):
-                print("🚫 Request skipped due to rate limits (daily limit reached)")
+                logger.warning("🚫 Request skipped due to rate limits (daily limit reached)")
                 return None
             
             # Make request to Groq with retry logic for 429 responses
             max_retries = 3
             for attempt in range(max_retries):
                 try:
-                    print(f"🤖 Making Groq API request (attempt {attempt + 1}/{max_retries})...")
+                    logger.info(f"🤖 Making Groq API request (attempt {attempt + 1}/{max_retries})...")
                     
                     response = self.groq.chat.completions.create(
                         model=model,
@@ -602,19 +629,19 @@ ONLY extract events from posts that are **ANNOUNCEMENTS** of future activities, 
                     # Update actual token usage if available
                     if hasattr(response, 'usage') and response.usage:
                         actual_tokens = response.usage.total_tokens
-                        print(f"📊 Actual tokens used: {actual_tokens}")
+                        logger.info(f"📊 Actual tokens used: {actual_tokens}")
                         self.rate_limiter.update_actual_usage(actual_tokens)
                     
                     # Parse the structured response
                     raw_content = response.choices[0].message.content
                     extracted_data = json.loads(raw_content)
-                    print("✅ Groq API request successful")
+                    logger.info("✅ Groq API request successful")
                     return extracted_data
                     
                 except Exception as e:
                     # Check if it's a 429 (rate limit) error
                     if "429" in str(e) or "rate limit" in str(e).lower():
-                        print(f"🚫 Rate limit error on attempt {attempt + 1}: {e}")
+                        logger.warning(f"🚫 Rate limit error on attempt {attempt + 1}: {e}")
                         
                         # Try to extract headers from the exception if possible
                         headers = {}
@@ -625,20 +652,20 @@ ONLY extract events from posts that are **ANNOUNCEMENTS** of future activities, 
                         self.rate_limiter.handle_429_response(headers)
                         
                         if attempt < max_retries - 1:
-                            print(f"🔄 Retrying request (attempt {attempt + 2}/{max_retries})...")
+                            logger.info(f"🔄 Retrying request (attempt {attempt + 2}/{max_retries})...")
                             continue
                         else:
-                            print(f"❌ Max retries reached for 429 errors")
+                            logger.error(f"❌ Max retries reached for 429 errors")
                             return None
                     else:
                         # Non-429 error, don't retry
-                        print(f"❌ Non-rate-limit error with Groq extraction: {e}")
+                        logger.error(f"❌ Non-rate-limit error with Groq extraction: {e}")
                         return None
             
             return None
             
         except Exception as e:
-            print(f"❌ Unexpected error with Groq extraction: {e}")
+            logger.error(f"❌ Unexpected error with Groq extraction: {e}")
             return None
     
     # =====================
@@ -692,15 +719,15 @@ ONLY extract events from posts that are **ANNOUNCEMENTS** of future activities, 
                     start_date = start_dt.date()
                     current_date = current_time.date()
                     if start_date < current_date:
-                        print(f"    ⏰ All-day event '{raw_event.get('name', 'Unnamed')}' was on {start_date} - skipping")
+                        logger.info(f"    ⏰ All-day event '{raw_event.get('name', 'Unnamed')}' was on {start_date} - skipping")
                         return None, 'past'
                 else:
                     # Timed events must be in the future
                     if start_dt < current_time:
-                        print(f"    ⏰ Event '{raw_event.get('name', 'Unnamed')}' has already happened ({start_dt.strftime('%Y-%m-%d %H:%M')} UTC) - skipping")
+                        logger.info(f"    ⏰ Event '{raw_event.get('name', 'Unnamed')}' has already happened ({start_dt.strftime('%Y-%m-%d %H:%M')} UTC) - skipping")
                         return None, 'past'
             except Exception as e:
-                print(f"    ⚠️ Error parsing start_datetime for past event check: {e}")
+                logger.warning(f"    ⚠️ Error parsing start_datetime for past event check: {e}")
                 # Continue processing if we can't parse the date
         
         # Check for events too far in the future (>120 days) unless year is specified
@@ -715,10 +742,10 @@ ONLY extract events from posts that are **ANNOUNCEMENTS** of future activities, 
                 has_explicit_year = any(str(year) in event_text for year in range(2024, 2030))
                 
                 if days_in_future > 120 and not has_explicit_year:
-                    print(f"    📅 Event '{raw_event.get('name', 'Unnamed')}' is more than 120 days in future ({days_in_future} days) without explicit year - likely incorrect date, skipping")
+                    logger.info(f"    📅 Event '{raw_event.get('name', 'Unnamed')}' is more than 120 days in future ({days_in_future} days) without explicit year - likely incorrect date, skipping")
                     return None, 'validation_failed'
             except Exception as e:
-                print(f"    ⚠️ Error parsing start_datetime for future limit check: {e}")
+                logger.warning(f"    ⚠️ Error parsing start_datetime for future limit check: {e}")
         
         is_all_day = bool(raw_event.get('is_all_day'))
         event_type = (raw_event.get('type') or 'in-person').lower()
@@ -733,7 +760,7 @@ ONLY extract events from posts that are **ANNOUNCEMENTS** of future activities, 
         
         # Require at least a name or description
         if not name and not description:
-            print(f"    ❌ Event has no name or description")
+            logger.warning(f"    ❌ Event has no name or description")
             return None, 'validation_failed'
             
         cleaned = {
@@ -802,7 +829,7 @@ ONLY extract events from posts that are **ANNOUNCEMENTS** of future activities, 
                 if insert_res.data:
                     ids.append(insert_res.data[0]['id'])
                 else:
-                    print(f"      ❌ Failed to create category '{name}'")
+                    logger.error(f"      ❌ Failed to create category '{name}'")
         return ids
     
     def _insert_transaction(self, event: Dict[str, Any], profile_id: str, school_id: str, post_id: str = None, caption_id: str = None) -> bool:
@@ -831,7 +858,7 @@ ONLY extract events from posts that are **ANNOUNCEMENTS** of future activities, 
             insert_res = self.supabase.table('events').insert(event_data).execute()
             
             if not insert_res.data:
-                print("Failed to insert event via REST - no data returned")
+                logger.error("Failed to insert event via REST - no data returned")
                 return False
             event_id = insert_res.data[0]['id']
             # Categories
@@ -843,7 +870,7 @@ ONLY extract events from posts that are **ANNOUNCEMENTS** of future activities, 
                     self.supabase.table('event_categories').insert({'event_id': event_id, 'category_id': cid}).execute()
                 except Exception as e:
                     if "duplicate key" not in str(e):  # Only log non-duplicate errors
-                        print(f"    ❌ Failed to link category {cid}: {e}")
+                        logger.error(f"    ❌ Failed to link category {cid}: {e}")
                         raise
                 
             # Tags
@@ -852,13 +879,13 @@ ONLY extract events from posts that are **ANNOUNCEMENTS** of future activities, 
                     self.supabase.table('event_tags').insert({'event-id': event_id, 'tag': tag}).execute()
                 except Exception as e:
                     if "duplicate key" not in str(e):  # Only log non-duplicate errors
-                        print(f"    ❌ Failed to add tag '{tag}': {e}")
+                        logger.error(f"    ❌ Failed to add tag '{tag}': {e}")
                         raise
                 
-            print(f"    🎉 Event insertion complete!")
+            logger.info(f"    🎉 Event insertion complete!")
             return True
         except Exception as e:
-            print(f"    ❌ Event insertion failed: {e}")
+            logger.error(f"    ❌ Event insertion failed: {e}")
             return False
     
     def validate_and_insert(self, extracted_data: Dict[str, Any], post_data: Dict[str, Any], posted_at: datetime = None) -> bool:
@@ -872,23 +899,23 @@ ONLY extract events from posts that are **ANNOUNCEMENTS** of future activities, 
         # Get categories and tags from top level (Groq returns them here, not inside each event)
         top_level_categories = extracted_data.get('categories', [])
         top_level_tags = extracted_data.get('event_tags', [])
-        print(f"🔍 Validating {len(events)} events...")
+        logger.info(f"🔍 Validating {len(events)} events...")
         
         success_any = False
         past_count = 0
         validation_failed_count = 0
         for i, raw_event in enumerate(events, 1):
-            print(f"  Validating event {i}: {raw_event.get('name', 'Unnamed')}")
+            logger.info(f"  Validating event {i}: {raw_event.get('name', 'Unnamed')}")
             cleaned, failure_reason = self._validate_event(raw_event, top_level_categories, top_level_tags, posted_at)
             if not cleaned:
                 if failure_reason == 'past':
-                    print(f"  ⏰ Event {i} is in the past – skipping.")
+                    logger.info(f"  ⏰ Event {i} is in the past – skipping.")
                     past_count += 1
                 elif failure_reason == 'validation_failed':
-                    print(f"  ❌ Validation failed for event {i} – skipping.")
+                    logger.warning(f"  ❌ Validation failed for event {i} – skipping.")
                     validation_failed_count += 1
                 else:
-                    print(f"  ❌ Unknown issue with event {i} – skipping.")
+                    logger.warning(f"  ❌ Unknown issue with event {i} – skipping.")
                     validation_failed_count += 1
                 continue
             # Address from schools table if location matches
@@ -897,12 +924,12 @@ ONLY extract events from posts that are **ANNOUNCEMENTS** of future activities, 
                 if school_res.data and cleaned['location_name'].lower() == school_res.data['name'].lower():
                     cleaned['address'] = school_res.data['address']
             # Insert transaction
-            print(f"  💾 Attempting to insert event: {cleaned['name']}")
+            logger.info(f"  💾 Attempting to insert event: {cleaned['name']}")
             inserted = self._insert_transaction(cleaned, profile_id, school_id, post_id, caption_id)
             if inserted:
-                print(f"  ✅ Successfully inserted: {cleaned['name']}")
+                logger.info(f"  ✅ Successfully inserted: {cleaned['name']}")
             else:
-                print(f"  ❌ Failed to insert: {cleaned['name']}")
+                logger.error(f"  ❌ Failed to insert: {cleaned['name']}")
             success_any = success_any or inserted
         
         # Print validation summary
@@ -913,13 +940,13 @@ ONLY extract events from posts that are **ANNOUNCEMENTS** of future activities, 
                 summary_parts.append(f"{past_count} past events")
             if validation_failed_count > 0:
                 summary_parts.append(f"{validation_failed_count} validation failures")
-            print(f"📊 Validation summary: {total_skipped} events skipped ({', '.join(summary_parts)})")
+            logger.info(f"📊 Validation summary: {total_skipped} events skipped ({', '.join(summary_parts)})")
         
         return success_any
 
     def process_post(self, post_data: Dict[str, Any]) -> Dict[str, Any]:
         """Process a single post through the complete extraction pipeline."""
-        print(f"Processing post from @{post_data.get('profiles', {}).get('username', 'unknown')}")
+        logger.info(f"Processing post from @{post_data.get('profiles', {}).get('username', 'unknown')}")
         
         # Prepare request for Groq
         request_data = self.prepare_groq_request(post_data)
@@ -928,19 +955,19 @@ ONLY extract events from posts that are **ANNOUNCEMENTS** of future activities, 
         extracted_data = self.extract_events_with_groq(request_data)
         
         if extracted_data:
-            print(f"✅ Extraction successful! Events found: {len(extracted_data.get('events', []))}")
-            print(f"📊 Extraction confidence: {extracted_data.get('extraction_confidence', 'N/A')}")
+            logger.info(f"✅ Extraction successful! Events found: {len(extracted_data.get('events', []))}")
+            logger.info(f"📊 Extraction confidence: {extracted_data.get('extraction_confidence', 'N/A')}")
             # Print extracted events summary
             for i, event in enumerate(extracted_data.get('events', []), 1):
-                print(f"  Event {i}: {event.get('name', 'Unnamed')} - {event.get('start_datetime', 'No date')}")
+                logger.info(f"  Event {i}: {event.get('name', 'Unnamed')} - {event.get('start_datetime', 'No date')}")
             
             inserted = self.validate_and_insert(extracted_data, post_data, request_data.get('posted_at'))
             if inserted:
-                print("💾 ✅ Successfully inserted into database")
+                logger.info("💾 ✅ Successfully inserted into database")
                 # Mark post processed
                 self.mark_post_processed(post_data['id'])
             else:
-                print("💾 ❌ Failed to insert into database")
+                logger.error("💾 ❌ Failed to insert into database")
                 
             return {
                 'post_id': post_data.get('id'),
@@ -949,7 +976,7 @@ ONLY extract events from posts that are **ANNOUNCEMENTS** of future activities, 
                 'extracted_data': extracted_data
             }
         else:
-            print("❌ Failed to extract events - no data returned from Groq")
+            logger.error("❌ Failed to extract events - no data returned from Groq")
             return {
                 'post_id': post_data.get('id'),
                 'username': request_data['username'],
@@ -963,7 +990,7 @@ ONLY extract events from posts that are **ANNOUNCEMENTS** of future activities, 
             result = self.supabase.table('posts').update({'processed': True}).eq('id', post_id).execute()
             return bool(result.data)
         except Exception as e:
-            print(f"Error marking post {post_id} as processed: {e}")
+            logger.error(f"Error marking post {post_id} as processed: {e}")
             return False
     
     def get_rate_limit_stats(self) -> Dict[str, Any]:
@@ -988,30 +1015,30 @@ ONLY extract events from posts that are **ANNOUNCEMENTS** of future activities, 
     def run_extraction_batch(self, batch_size: int = None) -> List[Dict[str, Any]]:
         """Run event extraction on all unprocessed posts (or limited batch if specified)."""
         if batch_size:
-            print(f"🚀 Starting event extraction batch (size: {batch_size})")
+            logger.info(f"🚀 Starting event extraction batch (size: {batch_size})")
         else:
-            print("🚀 Starting event extraction for all unprocessed posts")
+            logger.info("🚀 Starting event extraction for all unprocessed posts")
         
         # Show initial rate limit stats
         stats = self.get_rate_limit_stats()
-        print(f"📊 Starting rate limit usage:")
-        print(f"   RPM: {stats['requests_per_minute']['current']}/{stats['requests_per_minute']['threshold']} ({stats['requests_per_minute']['percentage']}%)")
-        print(f"   RPD: {stats['requests_per_day']['current']}/{stats['requests_per_day']['threshold']} ({stats['requests_per_day']['percentage']}%)")
-        print(f"   TPM: {stats['tokens_per_minute']['current']}/{stats['tokens_per_minute']['threshold']} ({stats['tokens_per_minute']['percentage']}%)")
+        logger.info(f"📊 Starting rate limit usage:")
+        logger.info(f"   RPM: {stats['requests_per_minute']['current']}/{stats['requests_per_minute']['threshold']} ({stats['requests_per_minute']['percentage']}%)")
+        logger.info(f"   RPD: {stats['requests_per_day']['current']}/{stats['requests_per_day']['threshold']} ({stats['requests_per_day']['percentage']}%)")
+        logger.info(f"   TPM: {stats['tokens_per_minute']['current']}/{stats['tokens_per_minute']['threshold']} ({stats['tokens_per_minute']['percentage']}%)")
         
         # Fetch unprocessed posts
         posts = self.fetch_unprocessed_posts(batch_size)
         
         if not posts:
-            print("ℹ️  No unprocessed posts found")
+            logger.info("ℹ️  No unprocessed posts found")
             return []
         
-        print(f"📊 Found {len(posts)} unprocessed posts")
+        logger.info(f"📊 Found {len(posts)} unprocessed posts")
         
         results = []
         for i, post in enumerate(posts, 1):
             try:
-                print(f"\n📝 Processing post {i}/{len(posts)} from @{post.get('profiles', {}).get('username', 'unknown')}")
+                logger.info(f"\n📝 Processing post {i}/{len(posts)} from @{post.get('profiles', {}).get('username', 'unknown')}")
                 
                 # Process the post
                 result = self.process_post(post)
@@ -1024,12 +1051,12 @@ ONLY extract events from posts that are **ANNOUNCEMENTS** of future activities, 
                 # Show updated rate limit stats every 5 posts
                 if i % 5 == 0:
                     stats = self.get_rate_limit_stats()
-                    print(f"📊 Current usage after {i} posts:")
-                    print(f"   RPM: {stats['requests_per_minute']['current']}/{stats['requests_per_minute']['threshold']} ({stats['requests_per_minute']['percentage']}%)")
-                    print(f"   TPM: {stats['tokens_per_minute']['current']}/{stats['tokens_per_minute']['threshold']} ({stats['tokens_per_minute']['percentage']}%)")
+                    logger.info(f"📊 Current usage after {i} posts:")
+                    logger.info(f"   RPM: {stats['requests_per_minute']['current']}/{stats['requests_per_minute']['threshold']} ({stats['requests_per_minute']['percentage']}%)")
+                    logger.info(f"   TPM: {stats['tokens_per_minute']['current']}/{stats['tokens_per_minute']['threshold']} ({stats['tokens_per_minute']['percentage']}%)")
                     
             except Exception as e:
-                print(f"Error processing post {post.get('id')}: {e}")
+                logger.error(f"Error processing post {post.get('id')}: {e}")
                 results.append({
                     'post_id': post.get('id'),
                     'username': post.get('profiles', {}).get('username', 'unknown'),
@@ -1039,12 +1066,12 @@ ONLY extract events from posts that are **ANNOUNCEMENTS** of future activities, 
         
         # Show final rate limit stats
         final_stats = self.get_rate_limit_stats()
-        print(f"\n📊 Final rate limit usage:")
-        print(f"   RPM: {final_stats['requests_per_minute']['current']}/{final_stats['requests_per_minute']['threshold']} ({final_stats['requests_per_minute']['percentage']}%)")
-        print(f"   RPD: {final_stats['requests_per_day']['current']}/{final_stats['requests_per_day']['threshold']} ({final_stats['requests_per_day']['percentage']}%)")
-        print(f"   TPM: {final_stats['tokens_per_minute']['current']}/{final_stats['tokens_per_minute']['threshold']} ({final_stats['tokens_per_minute']['percentage']}%)")
+        logger.info(f"\n📊 Final rate limit usage:")
+        logger.info(f"   RPM: {final_stats['requests_per_minute']['current']}/{final_stats['requests_per_minute']['threshold']} ({final_stats['requests_per_minute']['percentage']}%)")
+        logger.info(f"   RPD: {final_stats['requests_per_day']['current']}/{final_stats['requests_per_day']['threshold']} ({final_stats['requests_per_day']['percentage']}%)")
+        logger.info(f"   TPM: {final_stats['tokens_per_minute']['current']}/{final_stats['tokens_per_minute']['threshold']} ({final_stats['tokens_per_minute']['percentage']}%)")
         
-        print(f"🏁 Batch complete. Processed {len(results)} posts")
+        logger.info(f"🏁 Batch complete. Processed {len(results)} posts")
         return results
 
 def main():
@@ -1082,13 +1109,18 @@ def main():
         
         # Print summary
         successful = sum(1 for r in results if r['extraction_success'])
-        print(f"\n📈 Summary: {successful}/{len(results)} posts successfully processed")
+        logger.info(f"\n📈 Summary: {successful}/{len(results)} posts successfully processed")
+        
+        # Log completion message
+        logger.info("🎯 Event extraction batch completed successfully")
+        logger.info(f"📂 Log file location: {Path(__file__).parent}")
         
         # Return results for potential use by calling scripts
         return results
         
     except Exception as e:
-        print(f"❌ Fatal error: {e}")
+        logger.error(f"❌ Fatal error: {e}")
+        logger.error("🚨 Event extraction failed - check error details above")
         sys.exit(1)
 
 if __name__ == "__main__":

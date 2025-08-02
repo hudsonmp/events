@@ -49,11 +49,42 @@ jobs:
           python ai.py
         fi
     
+    - name: Check for log files
+      id: check_logs
+      run: |
+        if ls instagram/extraction/*.log 1> /dev/null 2>&1; then
+          echo "logs_exist=true" >> $GITHUB_OUTPUT
+          echo "Found log files:"
+          ls -la instagram/extraction/*.log
+        else
+          echo "logs_exist=false" >> $GITHUB_OUTPUT
+          echo "No log files found in instagram/extraction/"
+        fi
+    
     - name: Upload extraction logs
-      if: always()
+      if: always() && steps.check_logs.outputs.logs_exist == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: extraction-logs-${{ github.run_number }}
         path: |
           instagram/extraction/*.log
+        retention-days: 7
+    
+    - name: Create summary log if no logs found
+      if: always() && steps.check_logs.outputs.logs_exist == 'false'
+      run: |
+        echo "No extraction log files were created during this run." > instagram/extraction/no-logs-summary.txt
+        echo "This might indicate that:" >> instagram/extraction/no-logs-summary.txt
+        echo "1. The script failed before logging was initialized" >> instagram/extraction/no-logs-summary.txt
+        echo "2. No posts were found to process" >> instagram/extraction/no-logs-summary.txt
+        echo "3. There was an error in the script setup" >> instagram/extraction/no-logs-summary.txt
+        echo "Check the workflow logs above for more details." >> instagram/extraction/no-logs-summary.txt
+    
+    - name: Upload summary if no logs
+      if: always() && steps.check_logs.outputs.logs_exist == 'false'
+      uses: actions/upload-artifact@v4
+      with:
+        name: extraction-summary-${{ github.run_number }}
+        path: |
+          instagram/extraction/no-logs-summary.txt
         retention-days: 7 
