@@ -24,7 +24,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="light">
-      <body className={cn("min-h-screen bg-white font-sans antialiased overflow-x-hidden", inter.className)} style={{ overscrollBehavior: 'none', scrollBehavior: 'auto' }}>
+      <body className={cn("min-h-screen bg-white font-sans antialiased overflow-x-hidden", inter.className)} style={{ overscrollBehavior: 'none', scrollBehavior: 'auto' }} suppressHydrationWarning={true}>
         <AuthProvider>
           <div className="relative flex min-h-screen flex-col">
             <ConditionalHeader />
