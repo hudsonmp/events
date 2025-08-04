@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
-import { createClient, rsvpToEvent, cancelRsvp, checkRsvpStatus } from "@/lib/supabase/client"
+import { createClient, rsvpToEvent, cancelRsvp, checkRsvpStatus, getRsvpCount } from "@/lib/supabase/client"
 import { motion, AnimatePresence } from "framer-motion"
 import { cardHoverVariants, buttonTapVariants, SlideUp } from "@/lib/motion"
 
@@ -28,14 +28,13 @@ export function EventCard({ event, onClick }: EventCardProps) {
   const [isRSVPed, setIsRSVPed] = useState(false)
   const [rsvpLoading, setRsvpLoading] = useState(false)
   const [checkingRsvp, setCheckingRsvp] = useState(false)
-  const [isRSVPd, setIsRSVPd] = useState(false)
   const [rsvpCount, setRsvpCount] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
   const supabase = createClient()
   
-  // Try to get image from event_images first, then fall back to post_images
+  // Try to get image from event_images first, then fall back to post
   const eventImage = event.event_images?.[0]?.image?.storage_path
-  const postImage = event.post_images?.post_images?.[0]?.file_path
+  const postImage = event.post?.post_images?.[0]?.file_path
   
   const imageUrl = eventImage 
     ? getStorageUrl("event-images", eventImage)
@@ -61,6 +60,20 @@ export function EventCard({ event, onClick }: EventCardProps) {
       setIsRSVPed(false)
     }
   }, [user, event.id])
+
+  // Fetch RSVP count when component mounts
+  useEffect(() => {
+    if (event.id) {
+      getRsvpCount(event.id)
+        .then(({ count, error }) => {
+          if (error) {
+            console.error("Error fetching RSVP count:", error.message || error)
+          } else {
+            setRsvpCount(count)
+          }
+        })
+    }
+  }, [event.id])
 
   // Get profile picture from instagram-profile-pics bucket
   const getProfilePicUrl = (username: string) => {
@@ -111,6 +124,10 @@ export function EventCard({ event, onClick }: EventCardProps) {
         } else {
           setIsRSVPed(false)
           toast.success("RSVP cancelled successfully!")
+          // Refresh RSVP count
+          getRsvpCount(event.id).then(({ count }) => {
+            setRsvpCount(count)
+          })
         }
       } else {
         // Add RSVP
@@ -121,6 +138,10 @@ export function EventCard({ event, onClick }: EventCardProps) {
         } else {
           setIsRSVPed(true)
           toast.success("RSVP confirmed!")
+          // Refresh RSVP count
+          getRsvpCount(event.id).then(({ count }) => {
+            setRsvpCount(count)
+          })
         }
       }
     } catch (error) {
@@ -156,19 +177,27 @@ export function EventCard({ event, onClick }: EventCardProps) {
                 sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
                 onError={(e) => {
                   const target = e.target as HTMLImageElement
-                  target.src = "/placeholder.svg?height=200&width=300"
+                  target.style.display = 'none'
+                  const parent = target.parentElement
+                  if (parent) {
+                    parent.innerHTML = '<div class="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200"><svg class="h-16 w-16 text-slate-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd" /></svg></div>'
+                  }
                 }}
               />
-            ) : event.post_images?.post_images && event.post_images.post_images.length > 0 ? (
+            ) : event.post?.post_images && event.post.post_images.length > 0 ? (
               <Image
-                src={getStorageUrl("post-images", event.post_images.post_images[0].file_path)}
+                src={getStorageUrl("instagram-posts", event.post.post_images[0].file_path)}
                 alt={event.name}
                 fill
                 className="object-cover"
                 sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
                 onError={(e) => {
                   const target = e.target as HTMLImageElement
-                  target.src = "/placeholder.svg?height=200&width=300"
+                  target.style.display = 'none'
+                  const parent = target.parentElement
+                  if (parent) {
+                    parent.innerHTML = '<div class="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200"><svg class="h-16 w-16 text-slate-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd" /></svg></div>'
+                  }
                 }}
               />
             ) : (
@@ -181,7 +210,7 @@ export function EventCard({ event, onClick }: EventCardProps) {
             <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent" />
             
             {/* Category badges */}
-            {event.categories && event.categories.length > 0 && (
+            {event.categories && event.categories.length > 0 && event.categories[0].category && (
               <motion.div 
                 className="absolute top-3 left-3"
                 initial={{ opacity: 0, x: -20 }}
@@ -208,9 +237,9 @@ export function EventCard({ event, onClick }: EventCardProps) {
               >
                 <Button
                   size="sm"
-                  variant={isRSVPd ? "default" : "secondary"}
+                  variant={isRSVPed ? "default" : "secondary"}
                   className={`backdrop-blur-sm transition-all duration-200 ${
-                    isRSVPd 
+                    isRSVPed 
                       ? "bg-green-600 hover:bg-green-700 text-white" 
                       : "bg-white/90 hover:bg-white text-slate-800"
                   }`}
@@ -242,7 +271,7 @@ export function EventCard({ event, onClick }: EventCardProps) {
                       >
                         <Users className="h-3 w-3" />
                         <span className="text-xs font-medium">
-                          {isRSVPd ? "Going" : "RSVP"} ({rsvpCount})
+                          {isRSVPed ? "Going" : "RSVP"} ({rsvpCount})
                         </span>
                       </motion.div>
                     )}

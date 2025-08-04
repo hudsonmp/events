@@ -6,7 +6,7 @@ import { Calendar, Clock, MapPin, X, Users, User, UserCheck } from "lucide-react
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Dialog, DialogContent } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { useAuth } from "@/lib/contexts/auth-context"
 import { createClient } from "@/lib/supabase/client"
 import { rsvpToEvent, cancelRsvp, checkRsvpStatus } from "@/lib/supabase/client"
@@ -28,6 +28,8 @@ const getStorageUrl = (bucket: string, path: string) =>
 export function EventModal({ event, isOpen, onClose, onAuthPrompt }: EventModalProps) {
   const { user } = useAuth()
   const [isRSVPd, setIsRSVPd] = useState(false)
+  
+
   const [rsvpCount, setRsvpCount] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
   const supabase = createClient()
@@ -141,7 +143,7 @@ export function EventModal({ event, isOpen, onClose, onAuthPrompt }: EventModalP
   }
 
   // Get post images from the instagram-posts bucket
-  const allImages = event.post_images?.post_images || []
+  const allImages = event.post?.post_images || []
 
   // Get profile picture from instagram-profile-pics bucket
   const getProfilePicUrl = (username: string) => {
@@ -186,42 +188,56 @@ export function EventModal({ event, isOpen, onClose, onAuthPrompt }: EventModalP
 
               {/* Event Image */}
               <div className="relative h-64 md:h-80 bg-gradient-to-br from-slate-100 to-slate-200 overflow-hidden rounded-t-2xl">
-                {/* Primary image source */}
-                {event.event_images && event.event_images.length > 0 ? (
-                  <Image
-                    src={getStorageUrl("event-images", event.event_images[0].image.storage_path)}
-                    alt={event.name}
-                    fill
-                    className="object-cover"
-                    priority
-                    onError={(e) => {
-                      const target = e.target as HTMLImageElement
-                      target.src = "/placeholder.svg?height=320&width=600"
-                    }}
-                  />
-                ) : event.post_images?.post_images && event.post_images.post_images.length > 0 ? (
-                  <Image
-                    src={getStorageUrl("post-images", event.post_images.post_images[0].file_path)}
-                    alt={event.name}
-                    fill
-                    className="object-cover"
-                    priority
-                    onError={(e) => {
-                      const target = e.target as HTMLImageElement
-                      target.src = "/placeholder.svg?height=320&width=600"
-                    }}
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <Calendar className="h-24 w-24 text-slate-400" />
-                  </div>
-                )}
+                {(() => {
+                  // Try event_images first
+                  if (event.event_images && event.event_images.length > 0 && event.event_images[0].image?.storage_path) {
+                    const imageUrl = getStorageUrl("event-images", event.event_images[0].image.storage_path)
+                    return (
+                      <Image
+                        src={imageUrl}
+                        alt={event.name}
+                        fill
+                        className="object-cover"
+                        priority
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement
+                          target.style.display = 'none'
+                        }}
+                      />
+                    )
+                  }
+                  
+                  // Try post.post_images second  
+                  if (event.post?.post_images && event.post.post_images.length > 0 && event.post.post_images[0].file_path) {
+                    const imageUrl = getStorageUrl("instagram-posts", event.post.post_images[0].file_path)
+                    return (
+                      <Image
+                        src={imageUrl}
+                        alt={event.name}
+                        fill
+                        className="object-cover"
+                        priority
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement
+                          target.style.display = 'none'
+                        }}
+                      />
+                    )
+                  }
+                  
+                  // Fallback to calendar icon
+                  return (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <Calendar className="h-24 w-24 text-slate-400" />
+                    </div>
+                  )
+                })()}
                 
                 {/* Gradient overlay */}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
                 
                 {/* Category badge */}
-                {event.categories && event.categories.length > 0 && (
+                {event.categories && event.categories.length > 0 && event.categories[0].category && (
                   <motion.div 
                     className="absolute top-6 left-6"
                     initial={{ opacity: 0, x: -20 }}
@@ -241,9 +257,9 @@ export function EventModal({ event, isOpen, onClose, onAuthPrompt }: EventModalP
                   {/* Title and RSVP Button */}
                   <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-6">
                     <div className="flex-1">
-                      <h1 className="text-2xl md:text-3xl font-bold text-slate-800 mb-3 leading-tight">
+                      <DialogTitle className="text-2xl md:text-3xl font-bold text-slate-800 mb-3 leading-tight">
                         {event.name}
-                      </h1>
+                      </DialogTitle>
                       
                       {/* Event metadata */}
                       <div className="space-y-3">

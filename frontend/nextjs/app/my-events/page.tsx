@@ -20,7 +20,7 @@ async function getUserEvents(userId: string): Promise<{ upcoming: Event[], past:
         tags:event_tags(tag),
         profile:profiles(username, profile_pic_url, bio),
         school:schools(name, address),
-        post_images:posts!post_id(
+        post:posts!post_id(
           post_images(file_path)
         ),
         event_images:event_images(

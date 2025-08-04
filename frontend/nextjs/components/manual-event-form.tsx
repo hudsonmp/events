@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useAuth } from "@/lib/contexts/auth-context"
+import { useIsMobile } from "@/components/ui/use-mobile"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -39,6 +40,7 @@ interface ManualEventFormProps {
 export function ManualEventForm({ onBack, onSuccess, initialData }: ManualEventFormProps) {
   const { user } = useAuth()
   const supabase = createClient()
+  const isMobile = useIsMobile()
   
   // Form state
   const [formData, setFormData] = useState({
@@ -349,7 +351,7 @@ export function ManualEventForm({ onBack, onSuccess, initialData }: ManualEventF
   }
 
   return (
-    <div className="max-w-3xl mx-auto">
+    <div className={`${isMobile ? 'mx-4' : 'max-w-3xl mx-auto'}`}>
       <Card className="bg-white shadow-lg border border-gray-200">
         <CardHeader className="pb-4">
           <div className="flex items-center gap-3">
@@ -393,7 +395,7 @@ export function ManualEventForm({ onBack, onSuccess, initialData }: ManualEventF
             </div>
 
             {/* Date and Time */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className={`grid ${isMobile ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'} gap-3`}>
               {/* Start Date */}
               <div className="space-y-2">
                 <Label className="text-gray-700 font-medium text-sm">Start Date *</Label>
@@ -461,7 +463,7 @@ export function ManualEventForm({ onBack, onSuccess, initialData }: ManualEventF
 
             {/* Time Inputs (only if not all day) */}
             {!formData.is_all_day && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className={`grid ${isMobile ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'} gap-3`}>
                 <div className="space-y-2">
                   <Label htmlFor="start-time" className="text-gray-700 font-medium text-sm">Start Time</Label>
                   <Input
@@ -486,7 +488,7 @@ export function ManualEventForm({ onBack, onSuccess, initialData }: ManualEventF
             )}
 
             {/* Location */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className={`grid ${isMobile ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'} gap-3`}>
               <div className="space-y-2">
                 <Label htmlFor="location-name" className="text-gray-700 font-medium text-sm">Location Name</Label>
                 <Input
@@ -516,7 +518,7 @@ export function ManualEventForm({ onBack, onSuccess, initialData }: ManualEventF
                 <SelectTrigger className="bg-white border-gray-300 text-sm">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="bg-white/95 backdrop-blur-md border-gray-300 shadow-2xl z-[100]">
                   <SelectItem value="in-person">In Person</SelectItem>
                   <SelectItem value="virtual">Virtual</SelectItem>
                   <SelectItem value="hybrid">Hybrid</SelectItem>

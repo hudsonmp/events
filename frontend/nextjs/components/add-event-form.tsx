@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/contexts/auth-context"
+import { useIsMobile } from "@/components/ui/use-mobile"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -23,9 +24,11 @@ export function AddEventForm() {
   const { user } = useAuth()
   const router = useRouter()
   const supabase = createClient()
+  const isMobile = useIsMobile()
   
   const [showAIModal, setShowAIModal] = useState(false)
   const [showImageUpload, setShowImageUpload] = useState(false)
+  const [showAIPill, setShowAIPill] = useState(true)
   const [formData, setFormData] = useState({
     name: "",
     start_datetime: "",
@@ -105,6 +108,14 @@ export function AddEventForm() {
     setTimeout(() => setShowImageUpload(true), 500)
   }
 
+  const handleOpenAIModal = () => {
+    setShowAIModal(true)
+  }
+
+  const handleCloseAIModal = () => {
+    setShowAIModal(false)
+  }
+
   const addTag = () => {
     if (newTag.trim() && !formData.tags.includes(newTag.trim())) {
       setFormData(prev => ({
@@ -148,6 +159,11 @@ export function AddEventForm() {
 
     if (!formData.school_id) {
       toast.error("Please select a school")
+      return
+    }
+
+    if (!formData.start_datetime) {
+      toast.error("Please select a start date and time")
       return
     }
 
@@ -203,7 +219,7 @@ export function AddEventForm() {
           const { error: tagError } = await supabase
             .from('event_tags')
             .insert({
-              'event-id': event.id,
+              event_id: event.id,
               tag: tag
             })
           if (tagError) throw tagError
@@ -253,306 +269,319 @@ export function AddEventForm() {
   }
 
   return (
-    <div className="flex w-full h-full">
-      {/* Left Side - Image Area (1/3) */}
-      <div className="flex-1 relative bg-gradient-to-br from-slate-800 via-slate-700 to-slate-800 flex flex-col items-center justify-center p-8">
-        <div className="relative w-full max-w-sm aspect-square rounded-2xl overflow-hidden bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400 p-1">
-          <div className="w-full h-full rounded-2xl overflow-hidden relative">
+    <div className="flex flex-col w-full min-h-screen bg-white">
+      {/* Image Area - Full width on mobile, centered on desktop */}
+      <div className="w-full bg-white flex justify-center py-6 pt-16">
+        <div className="relative w-full max-w-sm aspect-square mx-auto">
+          <div className="w-full h-full rounded-2xl overflow-hidden relative bg-gradient-to-br from-blue-100 via-purple-100 to-pink-100 border border-gray-200">
             <Image
               src="/ai-club-logo.png"
               alt="Event placeholder"
               fill
-              className="object-cover"
+              className="object-cover rounded-2xl"
               priority
             />
             
-            {/* Conditional overlay - always show button if no images, hover if images exist */}
-            <div className={`absolute inset-0 transition-opacity ${
-              images.length === 0 
-                ? 'opacity-100' 
-                : 'opacity-0 hover:opacity-100 bg-black/20'
-            }`}>
-              <button
-                onClick={() => setShowImageUpload(true)}
-                className="absolute bottom-4 right-4 bg-blue-600 hover:bg-blue-700 text-white rounded-full px-4 py-2 font-medium shadow-lg transition-all hover:scale-105 flex items-center gap-2 text-sm"
-              >
+            {/* Generate/Upload Button - Pencil with Plus */}
+            <button
+              onClick={() => setShowImageUpload(true)}
+              className="absolute bottom-3 right-3 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-2 shadow-lg transition-all hover:scale-105 flex items-center justify-center"
+              title="Generate images with AI or upload"
+            >
+              <div className="relative">
                 <Sparkles className="h-4 w-4" />
-                Generate Images With AI
-              </button>
-            </div>
+                <div className="absolute -top-1 -right-1 bg-white text-blue-600 rounded-full w-3 h-3 flex items-center justify-center text-xs font-bold">+</div>
+              </div>
+            </button>
           </div>
+          
+          {/* Add Image Text */}
+          <button
+            onClick={() => setShowImageUpload(true)}
+            className="mt-3 text-gray-500 hover:text-gray-700 transition-colors text-sm font-medium block w-full text-center"
+          >
+            add image
+          </button>
         </div>
-        
-        {/* Add Image Text */}
-        <button
-          onClick={() => setShowImageUpload(true)}
-          className="mt-4 text-slate-200 hover:text-white transition-colors text-sm font-medium"
-        >
-          add image
-        </button>
       </div>
 
-      {/* Right Side - Form (2/3) */}
-      <div className="flex-[2] bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex flex-col h-full">
-        <div className="flex-1 max-w-2xl mx-auto w-full p-8 overflow-y-auto">
-          <form onSubmit={handleSubmit} className="space-y-6">
+      {/* AI Generate Pill Button */}
+      {showAIPill && (
+        <div className="w-full flex justify-center px-4 pb-4">
+          <button
+            onClick={handleOpenAIModal}
+            className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-full font-medium shadow-lg transition-all hover:scale-105 text-sm"
+          >
+            <Sparkles className="h-4 w-4" />
+            Generate with AI
+          </button>
+        </div>
+      )}
+
+      {/* Form Area */}
+      <div className="flex-1 bg-white px-4 pb-4">
+        <div className="max-w-2xl mx-auto w-full">
+          <form onSubmit={handleSubmit} className={`${isMobile ? 'space-y-6' : 'space-y-8'}`}>
             {/* Event Name */}
             <div>
               <Input
                 value={formData.name}
                 onChange={(e) => handleInputChange("name", e.target.value)}
                 placeholder="Event Name"
-                className="text-2xl font-medium bg-transparent border-none text-slate-100 placeholder:text-slate-400 px-0 focus:ring-0 focus:border-none"
+                className={`${isMobile ? 'text-xl h-14' : 'text-2xl h-16'} font-medium bg-white border border-gray-200 text-gray-900 placeholder:text-gray-400 px-4 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 rounded-xl`}
               />
             </div>
 
             {/* School Selection */}
-            <div className="flex items-center space-x-4">
-              <Building className="h-5 w-5 text-slate-300" />
-              <div className="flex-1">
-                <Label className="text-slate-300 text-sm">School</Label>
-                <Select value={formData.school_id} onValueChange={(value) => handleInputChange("school_id", value)}>
-                  <SelectTrigger className="bg-slate-800 border-slate-700 text-slate-100">
-                    <SelectValue placeholder="Select a school" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-slate-800 border-slate-700">
-                    {schools.map((school) => (
-                      <SelectItem key={school.id} value={school.id} className="text-slate-100">
-                        {school.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            <div className="space-y-2">
+              <div className={`flex items-center ${isMobile ? 'space-x-2' : 'space-x-3'}`}>
+                <Building className="h-5 w-5 text-gray-600" />
+                <Label className="text-gray-700 text-sm font-medium">School</Label>
               </div>
+              <Select value={formData.school_id} onValueChange={(value) => handleInputChange("school_id", value)}>
+                <SelectTrigger className="bg-white border border-gray-200 text-gray-900 h-12 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                  <SelectValue placeholder="Select a school" />
+                </SelectTrigger>
+                <SelectContent className="bg-white border border-gray-200 shadow-xl rounded-xl">
+                  {schools.map((school) => (
+                    <SelectItem key={school.id} value={school.id} className="text-gray-800 hover:bg-gray-50">
+                      {school.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Date and Time */}
             <div className="space-y-4">
-              <div className="flex items-center space-x-4">
-                <Clock className="h-5 w-5 text-slate-300" />
-                <div className="flex-1">
-                  <Label className="text-slate-300 text-sm">Start</Label>
-                  <CustomDateTimePicker
-                    value={formData.start_datetime}
-                    onChange={(date) => handleInputChange("start_datetime", date)}
-                    className="bg-slate-800 border-slate-700 text-slate-100"
-                  />
-                </div>
+              <div className="flex items-center space-x-3 mb-2">
+                <Clock className="h-5 w-5 text-gray-600" />
+                <Label className="text-gray-700 text-sm font-medium">Start</Label>
               </div>
+              <CustomDateTimePicker
+                value={formData.start_datetime}
+                onChange={(date) => handleInputChange("start_datetime", date)}
+                className="bg-white border border-gray-200 text-gray-900 h-12 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
 
-              <div className="flex items-center space-x-4">
-                <Clock className="h-5 w-5 text-slate-300" />
-                <div className="flex-1">
-                  <Label className="text-slate-300 text-sm">End</Label>
-                  <CustomDateTimePicker
-                    value={formData.end_datetime}
-                    onChange={(date) => handleInputChange("end_datetime", date)}
-                    className="bg-slate-800 border-slate-700 text-slate-100"
-                  />
-                </div>
+              <div className="flex items-center space-x-3 mb-2">
+                <Clock className="h-5 w-5 text-gray-600" />
+                <Label className="text-gray-700 text-sm font-medium">End</Label>
               </div>
+              <CustomDateTimePicker
+                value={formData.end_datetime}
+                onChange={(date) => handleInputChange("end_datetime", date)}
+                className="bg-white border border-gray-200 text-gray-900 h-12 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
 
               {/* All Day Toggle */}
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between py-2">
                 <div className="flex items-center space-x-3">
-                  <Calendar className="h-5 w-5 text-slate-300" />
-                  <span className="text-slate-100">All day event</span>
+                  <Calendar className="h-5 w-5 text-gray-600" />
+                  <span className="text-gray-700 font-medium">All day event</span>
                 </div>
                 <Switch
                   checked={formData.is_all_day}
                   onCheckedChange={(checked) => handleInputChange("is_all_day", checked)}
+                  className="data-[state=checked]:bg-blue-600"
                 />
               </div>
             </div>
 
             {/* Event Type */}
-            <div className="flex items-center space-x-4">
-              <Users className="h-5 w-5 text-slate-300" />
-              <div className="flex-1">
-                <Label className="text-slate-300 text-sm">Event Type</Label>
-                <Select value={formData.type} onValueChange={(value) => handleInputChange("type", value)}>
-                  <SelectTrigger className="bg-slate-800 border-slate-700 text-slate-100">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-slate-800 border-slate-700">
-                    <SelectItem value="in-person" className="text-slate-100">In Person</SelectItem>
-                    <SelectItem value="virtual" className="text-slate-100">Virtual</SelectItem>
-                    <SelectItem value="hybrid" className="text-slate-100">Hybrid</SelectItem>
-                  </SelectContent>
-                </Select>
+            <div className="space-y-2">
+              <div className="flex items-center space-x-3">
+                <Users className="h-5 w-5 text-gray-600" />
+                <Label className="text-gray-700 text-sm font-medium">Event Type</Label>
               </div>
+              <Select value={formData.type} onValueChange={(value) => handleInputChange("type", value)}>
+                <SelectTrigger className="bg-white border border-gray-200 text-gray-900 h-12 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-white border border-gray-200 shadow-xl rounded-xl">
+                  <SelectItem value="in-person" className="text-gray-800 hover:bg-gray-50">In Person</SelectItem>
+                  <SelectItem value="virtual" className="text-gray-800 hover:bg-gray-50">Virtual</SelectItem>
+                  <SelectItem value="hybrid" className="text-gray-800 hover:bg-gray-50">Hybrid</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Location */}
-            <div className="flex items-center space-x-4">
-              <MapPin className="h-5 w-5 text-slate-300" />
-              <div className="flex-1">
-                <Label className="text-slate-300 text-sm">Location</Label>
-                <LocationSearch
-                  value={formData.location_name}
-                  onChange={(location) => handleInputChange("location_name", location)}
-                  onAddressChange={(address) => handleInputChange("address", address)}
-                  placeholder="Add Event Location"
-                  className="bg-transparent border-none text-slate-100 placeholder:text-slate-400 px-0 focus:ring-0"
-                />
+            <div className="space-y-2">
+              <div className="flex items-center space-x-3">
+                <MapPin className="h-5 w-5 text-gray-600" />
+                <Label className="text-gray-700 text-sm font-medium">Location</Label>
               </div>
+              <LocationSearch
+                value={formData.location_name}
+                onChange={(location) => handleInputChange("location_name", location)}
+                onAddressChange={(address) => handleInputChange("address", address)}
+                placeholder="Add Event Location"
+                className="bg-white border border-gray-200 text-gray-900 placeholder:text-gray-400 px-4 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 h-12 rounded-xl"
+              />
             </div>
 
             {/* URL */}
-            <div className="flex items-center space-x-4">
-              <ExternalLink className="h-5 w-5 text-slate-300" />
-              <div className="flex-1">
-                <Label className="text-slate-300 text-sm">Event URL (optional)</Label>
-                <Input
-                  value={formData.url}
-                  onChange={(e) => handleInputChange("url", e.target.value)}
-                  placeholder="https://example.com"
-                  className="bg-transparent border-none text-slate-100 placeholder:text-slate-400 px-0 focus:ring-0"
-                />
+            <div className="space-y-2">
+              <div className="flex items-center space-x-3">
+                <ExternalLink className="h-5 w-5 text-gray-600" />
+                <Label className="text-gray-700 text-sm font-medium">Event URL (optional)</Label>
               </div>
+              <Input
+                value={formData.url}
+                onChange={(e) => handleInputChange("url", e.target.value)}
+                placeholder="https://example.com"
+                className="bg-white border border-gray-200 text-gray-900 placeholder:text-gray-400 px-4 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 h-12 rounded-xl"
+              />
             </div>
 
             {/* Description */}
-            <div className="flex items-start space-x-4">
-              <FileText className="h-5 w-5 text-slate-300 mt-1" />
-              <div className="flex-1">
-                <Label className="text-slate-300 text-sm">Description</Label>
-                <Textarea
-                  value={formData.description}
-                  onChange={(e) => handleInputChange("description", e.target.value)}
-                  placeholder="Add Description"
-                  className="bg-transparent border-none text-slate-100 placeholder:text-slate-400 px-0 focus:ring-0 resize-none min-h-[80px]"
-                />
+            <div className="space-y-2">
+              <div className="flex items-center space-x-3">
+                <FileText className="h-5 w-5 text-gray-600" />
+                <Label className="text-gray-700 text-sm font-medium">Description</Label>
               </div>
+              <Textarea
+                value={formData.description}
+                onChange={(e) => handleInputChange("description", e.target.value)}
+                placeholder="Add Description"
+                className="bg-white border border-gray-200 text-gray-900 placeholder:text-gray-400 px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none min-h-[100px] rounded-xl"
+              />
             </div>
 
             {/* Categories */}
-            <div className="flex items-start space-x-4">
-              <Tag className="h-5 w-5 text-slate-300 mt-1" />
-              <div className="flex-1 space-y-3">
-                <Label className="text-slate-300 text-sm">Categories</Label>
-                
-                {/* Category Selection */}
-                <div className="flex gap-2">
-                  <Select value={newCategory} onValueChange={setNewCategory}>
-                    <SelectTrigger className="bg-slate-800 border-slate-700 text-slate-100">
-                      <SelectValue placeholder="Add a category" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-slate-800 border-slate-700">
-                      {availableCategories.map((category) => (
-                        <SelectItem key={category.id} value={category.id} className="text-slate-100">
-                          {category.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    type="button"
-                    onClick={addCategory}
-                    disabled={!newCategory}
-                    className="bg-slate-700 hover:bg-slate-600 text-slate-100"
-                  >
-                    Add
-                  </Button>
-                </div>
-
-                {/* Selected Categories */}
-                <div className="flex flex-wrap gap-2">
-                  {formData.categories.map((categoryId) => {
-                    const category = availableCategories.find(c => c.id === categoryId)
-                    return (
-                      <Badge
-                        key={categoryId}
-                        variant="secondary"
-                        className="bg-blue-600 text-white hover:bg-blue-700"
-                      >
-                        {category?.name}
-                        <button
-                          type="button"
-                          onClick={() => removeCategory(categoryId)}
-                          className="ml-1 text-white/70 hover:text-white"
-                        >
-                          ×
-                        </button>
-                      </Badge>
-                    )
-                  })}
-                </div>
+            <div className="space-y-3">
+              <div className="flex items-center space-x-3">
+                <Tag className="h-5 w-5 text-gray-600" />
+                <Label className="text-gray-700 text-sm font-medium">Categories</Label>
               </div>
-            </div>
+              
+              {/* Category Selection */}
+              <div className="flex gap-3">
+                <Select value={newCategory} onValueChange={setNewCategory}>
+                  <SelectTrigger className="bg-white border border-gray-200 text-gray-900 h-12 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 flex-1">
+                    <SelectValue placeholder="Add a category" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white border border-gray-200 shadow-xl rounded-xl">
+                    {availableCategories.map((category) => (
+                      <SelectItem key={category.id} value={category.id} className="text-gray-800 hover:bg-gray-50">
+                        {category.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  onClick={addCategory}
+                  disabled={!newCategory}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 h-12 rounded-xl"
+                >
+                  Add
+                </Button>
+              </div>
 
-            {/* Tags */}
-            <div className="flex items-start space-x-4">
-              <Hash className="h-5 w-5 text-slate-300 mt-1" />
-              <div className="flex-1 space-y-3">
-                <Label className="text-slate-300 text-sm">Tags</Label>
-                
-                {/* Tag Input */}
-                <div className="flex gap-2">
-                  <Input
-                    value={newTag}
-                    onChange={(e) => setNewTag(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())}
-                    placeholder="Add a tag"
-                    className="bg-slate-800 border-slate-700 text-slate-100 placeholder:text-slate-400"
-                  />
-                  <Button
-                    type="button"
-                    onClick={addTag}
-                    disabled={!newTag.trim()}
-                    className="bg-slate-700 hover:bg-slate-600 text-slate-100"
-                  >
-                    Add
-                  </Button>
-                </div>
-
-                {/* Selected Tags */}
-                <div className="flex flex-wrap gap-2">
-                  {formData.tags.map((tag) => (
+              {/* Selected Categories */}
+              <div className="flex flex-wrap gap-2">
+                {formData.categories.map((categoryId) => {
+                  const category = availableCategories.find(c => c.id === categoryId)
+                  return (
                     <Badge
-                      key={tag}
-                      variant="outline"
-                      className="bg-slate-700 text-slate-100 border-slate-600 hover:bg-slate-600"
+                      key={categoryId}
+                      variant="secondary"
+                      className="bg-blue-100 text-blue-800 hover:bg-blue-200 px-3 py-1 rounded-full"
                     >
-                      #{tag}
+                      {category?.name}
                       <button
                         type="button"
-                        onClick={() => removeTag(tag)}
-                        className="ml-1 text-slate-400 hover:text-slate-100"
+                        onClick={() => removeCategory(categoryId)}
+                        className="ml-2 text-blue-600 hover:text-blue-800"
                       >
                         ×
                       </button>
                     </Badge>
-                  ))}
-                </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Tags */}
+            <div className="space-y-3">
+              <div className="flex items-center space-x-3">
+                <Hash className="h-5 w-5 text-gray-600" />
+                <Label className="text-gray-700 text-sm font-medium">Tags</Label>
+              </div>
+              
+              {/* Tag Input */}
+              <div className="flex gap-3">
+                <Input
+                  value={newTag}
+                  onChange={(e) => setNewTag(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())}
+                  placeholder="Add a tag"
+                  className="bg-white border border-gray-200 text-gray-900 placeholder:text-gray-400 px-4 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 h-12 rounded-xl flex-1"
+                />
+                <Button
+                  type="button"
+                  onClick={addTag}
+                  disabled={!newTag.trim()}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 h-12 rounded-xl"
+                >
+                  Add
+                </Button>
+              </div>
+
+              {/* Selected Tags */}
+              <div className="flex flex-wrap gap-2">
+                {formData.tags.map((tag) => (
+                  <Badge
+                    key={tag}
+                    variant="outline"
+                    className="bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200 px-3 py-1 rounded-full"
+                  >
+                    #{tag}
+                    <button
+                      type="button"
+                      onClick={() => removeTag(tag)}
+                      className="ml-2 text-gray-500 hover:text-gray-700"
+                    >
+                      ×
+                    </button>
+                  </Badge>
+                ))}
               </div>
             </div>
 
             {/* Event Options */}
-            <div className="space-y-4 pt-4">
-              <h3 className="text-slate-100 font-medium">Event Options</h3>
+            <div className="space-y-4 pt-6">
+              <h3 className="text-gray-800 font-semibold text-lg">Options</h3>
               
               {/* Private Event Toggle */}
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between py-3 px-4 bg-gray-50 rounded-xl">
                 <div className="flex items-center space-x-3">
-                  <Globe className="h-5 w-5 text-slate-300" />
-                  <span className="text-slate-100">Private Event</span>
+                  <Globe className="h-5 w-5 text-gray-600" />
+                  <div>
+                    <span className="text-gray-800 font-medium">Visibility</span>
+                    <p className="text-sm text-gray-500">
+                      {formData.is_private ? "Private" : "Public"}
+                    </p>
+                  </div>
                 </div>
                 <Switch
                   checked={formData.is_private}
                   onCheckedChange={(checked) => handleInputChange("is_private", checked)}
+                  className="data-[state=checked]:bg-blue-600"
                 />
               </div>
             </div>
           </form>
         </div>
 
-        {/* Create Event Button - Fixed at bottom */}
-        <div className="p-8 border-t border-slate-700">
+        {/* Create Event Button */}
+        <div className="mt-6 px-4">
           <Button
             onClick={handleSubmit}
-            disabled={isSubmitting || !formData.name.trim() || !formData.school_id}
-            className="w-full bg-white text-slate-900 hover:bg-slate-100 h-12 text-lg font-medium rounded-xl"
+            disabled={isSubmitting || !formData.name.trim() || !formData.school_id || !formData.start_datetime}
+            className={`w-full bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-300 disabled:text-gray-500 ${isMobile ? 'h-14 text-lg' : 'h-12 text-base'} font-semibold rounded-xl shadow-lg transition-all duration-200`}
           >
             {isSubmitting ? "Creating Event..." : "Create Event"}
           </Button>
@@ -562,19 +591,19 @@ export function AddEventForm() {
       {/* AI Generate Modal */}
       <AIGenerateModal
         isOpen={showAIModal}
-        onClose={() => setShowAIModal(false)}
+        onClose={handleCloseAIModal}
         onResult={handleAIResult}
       />
 
       {/* Image Upload Modal */}
       {showImageUpload && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-800 rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-white/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-gray-200">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-semibold text-white">Add Event Images</h3>
+              <h3 className="text-xl font-semibold text-gray-800">Add Event Images</h3>
               <button
                 onClick={() => setShowImageUpload(false)}
-                className="text-slate-400 hover:text-white"
+                className="text-gray-400 hover:text-gray-600 text-2xl"
               >
                 ×
               </button>

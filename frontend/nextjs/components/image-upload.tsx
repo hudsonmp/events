@@ -175,33 +175,33 @@ export function ImageUpload({ onImagesChange, eventTitle }: ImageUploadProps) {
       {/* Upload Options */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Manual Upload */}
-        <Card className="border-2 border-dashed border-slate-600 hover:border-blue-400 transition-colors cursor-pointer group bg-slate-700/50"
+        <Card className="border-2 border-dashed border-gray-300 hover:border-blue-500 transition-colors cursor-pointer group bg-white"
               onClick={() => fileInputRef.current?.click()}>
-          <CardContent className="p-6 text-center">
-            <Upload className="h-8 w-8 text-slate-400 group-hover:text-blue-400 mx-auto mb-2" />
-            <h3 className="font-medium text-white mb-1">Add Photos</h3>
-            <p className="text-sm text-slate-400">Upload from your device</p>
+          <CardContent className="p-4 text-center">
+            <Upload className="h-6 w-6 text-gray-400 group-hover:text-blue-500 mx-auto mb-2" />
+            <h3 className="font-medium text-gray-800 mb-1 text-sm">Add Photos</h3>
+            <p className="text-xs text-gray-500">Upload from your device</p>
             {isUploading && (
               <div className="mt-2 flex items-center justify-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin text-blue-400" />
-                <span className="text-sm text-slate-300">Uploading...</span>
+                <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                <span className="text-xs text-gray-600">Uploading...</span>
               </div>
             )}
           </CardContent>
         </Card>
 
         {/* AI Generation */}
-        <Card className="border-2 border-blue-400/50 bg-blue-900/20 cursor-pointer group hover:bg-blue-900/30 transition-colors"
+        <Card className="border-2 border-blue-200 bg-blue-50 cursor-pointer group hover:bg-blue-100 transition-colors"
               onClick={() => setShowAIModal(true)}>
-          <CardContent className="p-6 text-center relative">
-            <div className="absolute top-2 right-2 text-xs text-blue-400 font-medium">
+          <CardContent className="p-4 text-center relative">
+            <div className="absolute top-2 right-2 text-xs text-blue-600 font-medium">
               recommended
             </div>
             <div className="flex items-center justify-center mb-2">
-              <Sparkles className="h-8 w-8 text-blue-400" />
+              <Sparkles className="h-6 w-6 text-blue-600" />
             </div>
-            <h3 className="font-bold text-blue-400 mb-1">Generate with AI</h3>
-            <p className="text-sm text-slate-400">Create custom images</p>
+            <h3 className="font-bold text-blue-600 mb-1 text-sm">Generate with AI</h3>
+            <p className="text-xs text-gray-600">Create custom images</p>
           </CardContent>
         </Card>
       </div>
@@ -219,11 +219,11 @@ export function ImageUpload({ onImagesChange, eventTitle }: ImageUploadProps) {
       {/* Uploaded Images Gallery */}
       {uploadedImages.length > 0 && (
         <div className="space-y-2">
-          <Label className="text-white font-medium">Uploaded Images</Label>
+          <Label className="text-gray-800 font-medium">Uploaded Images</Label>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {uploadedImages.map((imagePath, index) => (
               <div key={imagePath} className="relative group">
-                <div className="aspect-square relative rounded-lg overflow-hidden bg-slate-700">
+                <div className="aspect-square relative rounded-lg overflow-hidden bg-gray-100 border border-gray-200">
                   <Image
                     src={getImageUrl(imagePath)}
                     alt={`Event image ${index + 1}`}
@@ -231,7 +231,11 @@ export function ImageUpload({ onImagesChange, eventTitle }: ImageUploadProps) {
                     className="object-cover"
                     onError={(e) => {
                       const target = e.target as HTMLImageElement
-                      target.src = "/placeholder.svg?height=200&width=200&text=Failed+to+Load"
+                      target.style.display = 'none'
+                      const parent = target.parentElement
+                      if (parent) {
+                        parent.innerHTML = '<div class="w-full h-full flex items-center justify-center bg-gray-100"><div class="text-gray-500 text-xs font-medium">Failed to Load</div></div>'
+                      }
                     }}
                   />
                 </div>
@@ -249,42 +253,42 @@ export function ImageUpload({ onImagesChange, eventTitle }: ImageUploadProps) {
 
       {/* AI Generation Modal */}
       <Dialog open={showAIModal} onOpenChange={setShowAIModal}>
-        <DialogContent className="sm:max-w-lg border border-slate-600 bg-slate-800 text-white shadow-2xl rounded-2xl">
+        <DialogContent className="sm:max-w-lg mx-4 border border-gray-200 bg-white backdrop-blur-md text-gray-800 shadow-2xl rounded-2xl">
           <DialogHeader>
-            <DialogTitle className="text-center text-xl font-bold text-white flex items-center justify-center gap-2">
-              <Sparkles className="h-5 w-5 text-blue-400" />
+            <DialogTitle className="text-center text-xl font-bold text-gray-800 flex items-center justify-center gap-2">
+              <Sparkles className="h-5 w-5 text-blue-600" />
               Generate Images with AI
             </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
             {/* Preview of what will be generated */}
-            <div className="p-4 bg-slate-700/50 rounded-lg border border-slate-600">
-              <p className="text-blue-400 text-sm mb-2">Generating images for:</p>
-              <p className="text-white font-medium">"{eventTitle}"</p>
+            <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <p className="text-blue-600 text-sm mb-2">Generating images for:</p>
+              <p className="text-gray-800 font-medium">"{eventTitle}"</p>
             </div>
 
             {/* Additional prompt */}
             <div className="space-y-2">
-              <Label className="text-white">Ideas (Optional)</Label>
+              <Label className="text-gray-800">Ideas (Optional)</Label>
               <Input
                 value={additionalPrompt}
                 onChange={(e) => setAdditionalPrompt(e.target.value)}
                 placeholder="e.g., colorful, festive, students cheering..."
-                className="bg-slate-700 border-slate-600 text-white placeholder:text-slate-400 focus:border-blue-400 focus:ring-blue-400/20"
+                className="bg-white border-gray-300 text-gray-800 placeholder:text-gray-500 focus:border-blue-500 focus:ring-blue-500/20"
               />
             </div>
 
             {/* Image count selection */}
             <div className="space-y-2">
-              <Label className="text-white">How many images?</Label>
+              <Label className="text-gray-800">How many images?</Label>
               <div className="flex gap-2">
                 <Button
                   variant={imageCount === 1 ? "default" : "outline"}
                   onClick={() => setImageCount(1)}
                   className={imageCount === 1 
-                    ? "bg-blue-600 hover:bg-blue-700" 
-                    : "border-slate-600 text-slate-300 hover:bg-slate-700"
+                    ? "bg-blue-600 hover:bg-blue-700 text-white" 
+                    : "border-gray-300 text-gray-600 hover:bg-gray-50"
                   }
                 >
                   1 Image
@@ -293,8 +297,8 @@ export function ImageUpload({ onImagesChange, eventTitle }: ImageUploadProps) {
                   variant={imageCount === 3 ? "default" : "outline"}
                   onClick={() => setImageCount(3)}
                   className={imageCount === 3 
-                    ? "bg-blue-600 hover:bg-blue-700" 
-                    : "border-slate-600 text-slate-300 hover:bg-slate-700"
+                    ? "bg-blue-600 hover:bg-blue-700 text-white" 
+                    : "border-gray-300 text-gray-600 hover:bg-gray-50"
                   }
                 >
                   3 Images
@@ -305,12 +309,12 @@ export function ImageUpload({ onImagesChange, eventTitle }: ImageUploadProps) {
             {/* Generation progress */}
             {isGenerating && (
               <div className="space-y-2">
-                <Label className="text-white">Generating...</Label>
+                <Label className="text-gray-800">Generating...</Label>
                 <div className="grid grid-cols-3 gap-2">
                   {Array.from({ length: imageCount }).map((_, i) => (
-                    <div key={i} className="aspect-square bg-slate-700 border border-slate-600 rounded-lg flex items-center justify-center">
+                    <div key={i} className="aspect-square bg-gray-100 border border-gray-300 rounded-lg flex items-center justify-center">
                       {generatingImages[i] === 'generating' ? (
-                        <Loader2 className="h-6 w-6 animate-spin text-blue-400" />
+                        <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
                       ) : generatingImages[i] ? (
                         <div className="w-full h-full relative rounded-lg overflow-hidden">
                           <Image
@@ -321,7 +325,7 @@ export function ImageUpload({ onImagesChange, eventTitle }: ImageUploadProps) {
                           />
                         </div>
                       ) : (
-                        <ImageIcon className="h-6 w-6 text-slate-400" />
+                        <ImageIcon className="h-6 w-6 text-gray-400" />
                       )}
                     </div>
                   ))}
@@ -335,14 +339,14 @@ export function ImageUpload({ onImagesChange, eventTitle }: ImageUploadProps) {
                 variant="outline"
                 onClick={() => setShowAIModal(false)}
                 disabled={isGenerating}
-                className="flex-1 border-slate-600 text-slate-300 hover:bg-slate-700"
+                className="flex-1 border-gray-300 text-gray-600 hover:bg-gray-50"
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleAIGeneration}
                 disabled={isGenerating || !eventTitle.trim()}
-                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-300 disabled:text-gray-500"
               >
                 {isGenerating ? (
                   <>

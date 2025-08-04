@@ -16,7 +16,7 @@ async function getInitialEvents(): Promise<Event[]> {
     tags:event_tags(tag),
     profile:profiles(username, profile_pic_url, bio),
     school:schools(name, address),
-    post_images:posts!post_id(
+    post:posts!post_id(
       post_images(file_path)
     ),
     event_images:event_images(
@@ -25,8 +25,8 @@ async function getInitialEvents(): Promise<Event[]> {
   `,
     )
     .eq("status", "active")
-    .or(`start_datetime.gte.${new Date().toISOString()},start_datetime.is.null`)
-    .limit(20)
+    .order('created_at', { ascending: false })
+    .limit(100)
 
   if (error) {
     console.error("Error fetching initial events:", error)
@@ -65,13 +65,16 @@ async function getCalendarEvents(): Promise<Event[]> {
     tags:event_tags(tag),
     profile:profiles(username, profile_pic_url, bio),
     school:schools(name, address),
+    post:posts!post_id(
+      post_images(file_path)
+    ),
     event_images:event_images(
       image:images(id, storage_path, url)
     )
   `,
     )
     .eq("status", "active")
-    .or(`start_datetime.gte.${new Date().toISOString()},start_datetime.is.null`)
+    .order('created_at', { ascending: false })
 
   if (error) {
     console.error("Error fetching calendar events:", error)
@@ -104,7 +107,7 @@ export default async function HomePage() {
   const calendarEvents = await getCalendarEvents()
 
   return (
-    <section className="w-full">
+    <section className="w-full min-h-screen bg-white">
       {/* Mobile: Full width events feed only */}
       <div className="lg:hidden">
         <EventList initialEvents={initialEvents} />
@@ -113,13 +116,13 @@ export default async function HomePage() {
       {/* Desktop: Side-by-side layout */}
       <div className="hidden lg:flex gap-6 max-w-screen-2xl mx-auto p-4">
         {/* Events Feed - 2/3 width */}
-        <div className="flex-1 w-2/3">
+        <div className="flex-1 max-w-none">
           <EventList initialEvents={initialEvents} />
         </div>
         
         {/* Calendar Sidebar - 1/3 width */}
-        <div className="w-1/3 min-w-[320px]">
-          <div className="sticky top-4">
+        <div className="w-80 flex-shrink-0">
+          <div className="sticky top-20">
             <CompactCalendar events={calendarEvents} />
           </div>
         </div>

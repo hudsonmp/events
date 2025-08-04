@@ -134,7 +134,7 @@ export function LocationSearch({
 
       {/* Suggestions Dropdown */}
       {showSuggestions && suggestions.length > 0 && (
-        <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-slate-800 border border-slate-700 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+        <div className="absolute top-full left-0 right-0 z-[100] mt-1 bg-slate-800/95 backdrop-blur-md border border-slate-700 rounded-lg shadow-2xl max-h-60 overflow-y-auto">
           {suggestions.map((suggestion) => (
             <button
               key={suggestion.place_id}

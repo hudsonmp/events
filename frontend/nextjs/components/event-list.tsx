@@ -44,33 +44,57 @@ export function EventList({ initialEvents }: { initialEvents: Event[] }) {
   const fetchEvents = useCallback(
     async (searchQuery: string, category: string | null) => {
       setIsLoading(true)
-      let queryBuilder = supabase
-        .from("events")
-        .select(`
-        *,
-        categories:event_categories(category:categories(id, name)),
-        tags:event_tags(tag),
-        profile:profiles(username, profile_pic_url, bio),
-        school:schools(name, address),
-        post_images:posts!post_id(
-          post_images(file_path)
-        ),
-        event_images:event_images(
-          image:images(id, storage_path, url)
-        )
-      `)
-        .eq("status", "active")
-        .or(`start_datetime.gte.${new Date().toISOString()},start_datetime.is.null`)
+      let queryBuilder
 
       if (category) {
-        queryBuilder = queryBuilder.eq("categories.category.name", category)
+        // When filtering by category, use inner join to only get events with that category
+        queryBuilder = supabase
+          .from("events")
+          .select(`
+            *,
+            categories:event_categories!inner(category:categories!inner(id, name)),
+            tags:event_tags(tag),
+            profile:profiles(username, profile_pic_url, bio),
+            school:schools(name, address),
+            post:posts!post_id(
+              post_images(file_path)
+            ),
+            event_images:event_images(
+              image:images(id, storage_path, url)
+            )
+          `)
+          .eq("event_categories.categories.name", category)
+      } else {
+        // When showing all events, use left join to include events without categories
+        queryBuilder = supabase
+          .from("events")
+          .select(`
+            *,
+            categories:event_categories(category:categories(id, name)),
+            tags:event_tags(tag),
+            profile:profiles(username, profile_pic_url, bio),
+            school:schools(name, address),
+            post:posts!post_id(
+              post_images(file_path)
+            ),
+            event_images:event_images(
+              image:images(id, storage_path, url)
+            )
+          `)
       }
+
+      queryBuilder = queryBuilder
+        .eq("status", "active")
 
       if (searchQuery) {
         queryBuilder = queryBuilder.or(
           `name.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%,location_name.ilike.%${searchQuery}%`,
         )
       }
+
+      queryBuilder = queryBuilder
+        .order('created_at', { ascending: false })
+        .limit(200)  // High limit to ensure we get all events
 
       const { data, error } = await queryBuilder
 
@@ -219,10 +243,9 @@ export function EventList({ initialEvents }: { initialEvents: Event[] }) {
             ))}
           </div>
         ) : events.length > 0 ? (
-          <StaggerContainer className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <StaggerContainer className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
             <AnimatePresence>
               {events
-                .filter(event => event.start_datetime)
                 .map((event, index) => (
                   <StaggerItem
                     key={event.id}
