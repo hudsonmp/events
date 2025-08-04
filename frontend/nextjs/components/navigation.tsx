@@ -237,7 +237,7 @@ export function BottomNavigation() {
       {/* Bottom Navigation for Mobile */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-sm border-t border-gray-200 shadow-lg">
         <div className="flex items-center justify-around px-4 py-2 pb-safe">
-          {/* Find Events */}
+          {/* Discover */}
           <motion.div
             variants={buttonTapVariants}
             initial="rest"
@@ -247,7 +247,21 @@ export function BottomNavigation() {
           >
             <Link href="/" className="flex flex-col items-center justify-center py-2 px-3 rounded-lg transition-colors hover:bg-gray-50">
               <Search className="h-5 w-5 text-slate-600 mb-1" />
-              <span className="text-xs text-slate-600 font-medium">Find</span>
+              <span className="text-xs text-slate-600 font-medium">Discover</span>
+            </Link>
+          </motion.div>
+
+          {/* Calendar/Events */}
+          <motion.div
+            variants={buttonTapVariants}
+            initial="rest"
+            whileHover="hover"
+            whileTap="tap"
+            className="flex-1"
+          >
+            <Link href="/calendar" className="flex flex-col items-center justify-center py-2 px-3 rounded-lg transition-colors hover:bg-gray-50">
+              <Calendar className="h-5 w-5 text-slate-600 mb-1" />
+              <span className="text-xs text-slate-600 font-medium">Events</span>
             </Link>
           </motion.div>
 
@@ -260,7 +274,7 @@ export function BottomNavigation() {
             className="flex-1"
           >
             <Link href="/my-events" className="flex flex-col items-center justify-center py-2 px-3 rounded-lg transition-colors hover:bg-gray-50">
-              <Calendar className="h-5 w-5 text-slate-600 mb-1" />
+              <User className="h-5 w-5 text-slate-600 mb-1" />
               <span className="text-xs text-slate-600 font-medium">My Events</span>
             </Link>
           </motion.div>

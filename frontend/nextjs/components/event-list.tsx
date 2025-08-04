@@ -44,6 +44,7 @@ export function EventList({ initialEvents }: { initialEvents: Event[] }) {
   const fetchEvents = useCallback(
     async (searchQuery: string, category: string | null) => {
       setIsLoading(true)
+      const now = new Date().toISOString()
       let queryBuilder
 
       if (category) {
@@ -102,8 +103,18 @@ export function EventList({ initialEvents }: { initialEvents: Event[] }) {
         console.error("Error fetching events:", error)
         setEvents([])
       } else {
+        // Filter out past events (keep events without dates and future events)
+        const currentAndFutureEvents = (data || []).filter(event => {
+          // If event has no start_datetime, include it (might be ongoing or timeless events)
+          if (!event.start_datetime) {
+            return true
+          }
+          // Only include events that haven't started yet or are currently happening
+          return new Date(event.start_datetime) >= new Date(now)
+        })
+        
         // Sort events: events with dates first (sorted by date), then events without dates
-        const sortedData = (data || []).sort((a, b) => {
+        const sortedData = currentAndFutureEvents.sort((a, b) => {
           // If both have dates, sort by date
           if (a.start_datetime && b.start_datetime) {
             return new Date(a.start_datetime).getTime() - new Date(b.start_datetime).getTime()
