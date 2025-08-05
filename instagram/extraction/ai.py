@@ -268,6 +268,96 @@ class GroqRateLimiter:
             print("🔄 Rate limiter usage statistics reset")
 
 
+class RateLimitedGroqClient:
+    """
+    Wrapper around Groq client that automatically applies rate limiting to all requests.
+    This ensures consistent rate limiting without having to manually call check_and_wait_if_needed.
+    """
+    
+    def __init__(self, groq_client: Groq, rate_limiter: GroqRateLimiter):
+        self.groq = groq_client
+        self.rate_limiter = rate_limiter
+        
+        # Create a wrapper for the chat completions
+        self.chat = self._create_chat_wrapper()
+    
+    def _create_chat_wrapper(self):
+        """Create a wrapper object that mimics the groq.chat interface."""
+        class ChatWrapper:
+            def __init__(self, groq_client, rate_limiter):
+                self.groq = groq_client
+                self.rate_limiter = rate_limiter
+                self.completions = self._create_completions_wrapper()
+            
+            def _create_completions_wrapper(self):
+                """Create a wrapper for completions that automatically applies rate limiting."""
+                class CompletionsWrapper:
+                    def __init__(self, groq_client, rate_limiter):
+                        self.groq = groq_client
+                        self.rate_limiter = rate_limiter
+                    
+                    def create(self, model, messages, **kwargs):
+                        """
+                        Create a chat completion with automatic rate limiting.
+                        This method automatically applies rate limiting before making the request.
+                        """
+                        # Apply rate limiting before the request
+                        if not self.rate_limiter.check_and_wait_if_needed(messages, model):
+                            print("🚫 Request skipped due to rate limits (daily limit reached)")
+                            return None
+                        
+                        # Make request to Groq with retry logic for 429 responses
+                        max_retries = 3
+                        for attempt in range(max_retries):
+                            try:
+                                print(f"🤖 Making Groq API request (attempt {attempt + 1}/{max_retries})...")
+                                
+                                response = self.groq.chat.completions.create(
+                                    model=model,
+                                    messages=messages,
+                                    **kwargs
+                                )
+                                
+                                # Update actual token usage if available
+                                if hasattr(response, 'usage') and response.usage:
+                                    actual_tokens = response.usage.total_tokens
+                                    print(f"📊 Actual tokens used: {actual_tokens}")
+                                    self.rate_limiter.update_actual_usage(actual_tokens)
+                                
+                                print("✅ Groq API request successful")
+                                return response
+                                
+                            except Exception as e:
+                                # Check if it's a 429 (rate limit) error
+                                if "429" in str(e) or "rate limit" in str(e).lower():
+                                    print(f"🚫 Rate limit error on attempt {attempt + 1}: {e}")
+                                    
+                                    # Try to extract headers from the exception if possible
+                                    headers = {}
+                                    if hasattr(e, 'response') and hasattr(e.response, 'headers'):
+                                        headers = dict(e.response.headers)
+                                    
+                                    # Handle 429 response
+                                    self.rate_limiter.handle_429_response(headers)
+                                    
+                                    if attempt < max_retries - 1:
+                                        print(f"🔄 Retrying request (attempt {attempt + 2}/{max_retries})...")
+                                        continue
+                                    else:
+                                        print(f"❌ Max retries reached for 429 errors")
+                                        return None
+                                else:
+                                    # Non-429 error, don't retry
+                                    print(f"❌ Non-rate-limit error with Groq API: {e}")
+                                    return None
+                        
+                        return None
+                
+                return CompletionsWrapper(self.groq, self.rate_limiter)
+        
+        return ChatWrapper(self.groq, self.rate_limiter)
+
+
 class EventExtractor:
     def __init__(self):
         """Initialize the event extractor with Supabase and Groq clients."""
@@ -279,10 +369,13 @@ class EventExtractor:
             raise ValueError("Missing required environment variables: SUPABASE_PROJECT_URL, SUPABASE_SERVICE_ROLE, GROQ_API_KEY")
         
         self.supabase: Client = create_client(self.supabase_url, self.supabase_key)
-        self.groq = Groq(api_key=self.groq_api_key)
         
-        # Initialize rate limiter
+        # Initialize rate limiter first
         self.rate_limiter = GroqRateLimiter()
+        
+        # Create rate-limited Groq client wrapper
+        raw_groq_client = Groq(api_key=self.groq_api_key)
+        self.groq = RateLimitedGroqClient(raw_groq_client, self.rate_limiter)
         
         # Load the JSON schema for structured output
         schema_path = Path(__file__).parent / "groq_output_schema.json"
@@ -373,15 +466,21 @@ class EventExtractor:
         profile = post_data.get('profiles', {})
         post_images = post_data.get('post_images', [])
         
-        # Parse posted date for context
+        # Parse posted date for context - this is critical for relative date resolution
         posted_at = None
         posted_at_str = "Unknown"
+        posted_year = "Unknown"
+        posted_month = "Unknown"
+        posted_day_of_week = "Unknown"
         try:
             if post_data.get('created_at'):
                 posted_at = date_parser.parse(post_data['created_at'])
                 if posted_at.tzinfo is None:
                     posted_at = posted_at.replace(tzinfo=timezone.utc)
                 posted_at_str = posted_at.strftime('%A, %B %d, %Y at %I:%M %p UTC')
+                posted_year = str(posted_at.year)
+                posted_month = posted_at.strftime('%B')
+                posted_day_of_week = posted_at.strftime('%A')
         except Exception as e:
             print(f"⚠️ Could not parse posted date: {e}")
         
@@ -405,8 +504,15 @@ class EventExtractor:
         
         Post Caption: {caption_content or 'No caption available'}
         
-        **POSTING CONTEXT:**
-        This post was published on: {posted_at_str}
+        **🎯 CRITICAL POSTING CONTEXT FOR DATE RESOLUTION:**
+        POST PUBLICATION DATE: {posted_at_str}
+        POST YEAR: {posted_year}
+        POST MONTH: {posted_month}  
+        POST DAY OF WEEK: {posted_day_of_week}
+        
+        ⚠️ MANDATORY: All relative dates ("this Friday", "next week", "tomorrow", "this year") MUST be resolved against the POST PUBLICATION DATE above, NOT today's date.
+        
+        Example: If post was published on "Wednesday, January 10, 2024" and mentions "this Friday", that means "Friday, January 12, 2024".
         """
         
         # Prepare image attachments (limit to 3 as per Groq's vision limit)
@@ -470,35 +576,46 @@ ONLY extract events from posts that are **ANNOUNCEMENTS** of future activities, 
 - Post photos/memories from past events without future context
 - Share ongoing information without specific future dates: "We are going to Big Bear to train" (unless announcing next specific meeting)
 
-**CRITICAL TEMPORAL CONTEXT**: 
-- The post you're analyzing has a specific publication date/time provided in the content
-- Resolve ALL relative dates ("this Friday", "next week", "tomorrow") against the POST DATE, not current date
-- Then validate if those resolved dates are still upcoming compared to TODAY ({current_date_str})
-- If a post says "this Friday" and was posted 2 weeks ago, that Friday has already passed - SKIP IT
+**🎯 CRITICAL TEMPORAL CONTEXT - READ CAREFULLY**: 
 
-## 1. DATE RESOLUTION & VALIDATION - STRICTLY ENFORCE:
+**STEP-BY-STEP DATE RESOLUTION PROCESS:**
 
-**Step 1: Resolve relative dates against POST DATE**
-- "this Friday" = the Friday of the week the post was published
-- "next Friday" = the Friday after the post publication week  
-- "tomorrow" = the day after the post was published
-- "at lunch today" = lunchtime (~12:00 PM) on the day the post was published
+1. **REFERENCE POINT**: The post publication date/time is clearly provided in the input data
+2. **RESOLVE RELATIVES**: Convert ALL relative dates using the POST publication date as your reference:
+   - "this Friday" = the Friday of the WEEK when the post was published
+   - "next Friday" = the Friday of the WEEK AFTER the post was published  
+   - "tomorrow" = the day immediately following the post publication date
+   - "this weekend" = the weekend of the post publication week
+   - "next month" = the month following the post publication month
+   - "this year" = the same year as the post publication year
 
-**Step 2: Validate against CURRENT DATE**
+3. **VALIDATE CURRENCY**: After resolving to absolute dates, check if they're still future compared to TODAY ({current_date_str})
+   - If resolved date is before today → SKIP the event entirely
+   - If resolved date is today or future → INCLUDE the event
+
+**EXAMPLE**: If post was published on "Monday, January 8, 2024" and mentions "this Friday":
+- ✅ CORRECT: "this Friday" = Friday, January 12, 2024
+- ❌ WRONG: Using current date to resolve "this Friday"
+
+## 1. ABSOLUTE DATE REQUIREMENTS:
+
 - ONLY include events that occur on or after {current_date_str}
-- If post date context shows an event has passed, SKIP IT entirely
-- If you can't determine the exact date, err on the side of caution and SKIP
-
-**Step 3: Future date limits**
 - REJECT events more than 120 days in the future UNLESS a specific year is mentioned
 - If someone posts "March 15th" in December, it likely means next year - but without year specified, assume this year and reject if >120 days
 
-**Step 4: Time defaults**
-- If date is clear but time is vague: "at lunch" = 12:00 PM, "after school" = 4:00 PM
-- If only date given (no time), set as all-day event
-- Avoid defaulting to midnight - use contextual times or all-day
+## 2. DATE AND TIME FORMATTING:
+- If date is clear but time is vague: "at lunch" = 12:00 PM, "after school" = 4:00 PM  
+- If only date is given (no specific time), you have **three options**:
+  1. **Date-only format**: Use just the date (e.g., "2024-01-15") when no time is mentioned
+  2. **All-day event**: Set `is_all_day=true` for events that span the entire day
+  3. **Default time**: Use 12:00 PM and add "Time TBD" in the description if context suggests a specific time will be announced later
+- When a numeric time is mentioned **without AM/PM**, infer the most plausible option using typical school context:  
+  • 5-9 → assume **PM** (e.g., "6" ➜ 6:00 PM – after-school hours)  
+  • 10-2 → assume **AM** (e.g., "10" ➜ 10:00 AM – morning hours)  
+  • Otherwise decide based on surrounding context (evening activities usually PM, morning meetings AM).  
+- **Never** default to midnight. Use contextual inference, all-day events, date-only format, or the 12 PM fallback with "Time TBD" when necessary.
 
-## 2. CATEGORY CLASSIFICATION - MAX 2 PER EVENT:
+## 3. CATEGORY CLASSIFICATION - MAX 2 PER EVENT:
 
 **SPORT**: Athletic competitions, tryouts, practices, games
 - Examples: "Basketball tryouts", "Soccer game vs. rivals", "Track meet", "Tennis practice"
@@ -520,32 +637,32 @@ ONLY extract events from posts that are **ANNOUNCEMENTS** of future activities, 
 - Examples: "Parent-teacher conferences", "College counseling session", "Honor society meeting"
 - NOT for: club meetings (use "club"), sports meetings (use "sport")
 
-## 3. AUDIENCE TARGETING & SPLITTING:
+## 4. AUDIENCE TARGETING & SPLITTING:
 - Create separate events for different audiences/times
 - Include specific level in title: "JV Basketball Tryouts", "Senior Graduation Pictures"  
 - Split multi-level events: "JV and Varsity tryouts" = 2 separate events
 
-## 4. ENHANCED TAGGING - TARGET ~30 TAGS:
+## 5. ENHANCED TAGGING - TARGET ~30 TAGS:
 - Use single words only: "Basketball" not "Basketball Team"
 - Include variations: "Soccer", "Football" for soccer posts
 - Cover multiple search angles: sport name, level, gender, general terms
 - Examples: "Basketball", "Tryouts", "JV", "Girls", "Athletics", "Sports", "Team", "Competition", "School", "Students"
 
-## 5. WRITING STANDARDS:
+## 6. WRITING STANDARDS:
 - **Title**: ≤8 words, include audience level, optional emoji
 - **Description**: 3-4 sentences with specific details, context, practical info
 - **Categories**: Exactly 1-2 categories, be specific about distinctions
 - **Tags**: ~30 single-word tags covering all search angles
 
-## 6. QUALITY CHECKLIST:
+## 7. QUALITY CHECKLIST:
 ✅ Resolved relative dates against POST date, then validated against current date
 ✅ No events in the past (before {current_date_str})
 ✅ No events >120 days future without specified year
+✅ Appropriate date/time format used (date-only, all-day, or specific time)
 ✅ Contextual times used ("lunch"=12PM, "after school"=4PM)
 ✅ 1-2 specific categories chosen correctly
 ✅ Audience level in title when applicable
 ✅ ~30 relevant single-word tags
-✅ All-day events when time is ambiguous
 
 **OUTPUT**: JSON object only, no commentary.
             """
@@ -568,70 +685,30 @@ ONLY extract events from posts that are **ANNOUNCEMENTS** of future activities, 
                 }
             ]
             
-            model = "meta-llama/llama-4-scout-17b-16e-instruct"  # User's preferred model
+            model = "meta-llama/llama-4-scout-17b-16e-instruct"  # Reverted to preferred model
             
-            # Check rate limits and wait if necessary
-            if not self.rate_limiter.check_and_wait_if_needed(messages, model):
-                print("🚫 Request skipped due to rate limits (daily limit reached)")
+            # Make request using the rate-limited wrapper (automatically handles rate limiting and retries)
+            response = self.groq.chat.completions.create(
+                model=model,
+                messages=messages,
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "event_extraction",
+                        "schema": self.output_schema
+                    }
+                },
+                temperature=0.4,  # Slightly higher temperature for better reasoning
+                max_tokens=4000
+            )
+            
+            if response is None:
                 return None
             
-            # Make request to Groq with retry logic for 429 responses
-            max_retries = 3
-            for attempt in range(max_retries):
-                try:
-                    print(f"🤖 Making Groq API request (attempt {attempt + 1}/{max_retries})...")
-                    
-                    response = self.groq.chat.completions.create(
-                        model=model,
-                        messages=messages,
-                        response_format={
-                            "type": "json_schema",
-                            "json_schema": {
-                                "name": "event_extraction",
-                                "schema": self.output_schema
-                            }
-                        },
-                        temperature=0.4,  # Slightly higher temperature for better reasoning
-                        max_tokens=4000
-                    )
-                    
-                    # Update actual token usage if available
-                    if hasattr(response, 'usage') and response.usage:
-                        actual_tokens = response.usage.total_tokens
-                        print(f"📊 Actual tokens used: {actual_tokens}")
-                        self.rate_limiter.update_actual_usage(actual_tokens)
-                    
-                    # Parse the structured response
-                    raw_content = response.choices[0].message.content
-                    extracted_data = json.loads(raw_content)
-                    print("✅ Groq API request successful")
-                    return extracted_data
-                    
-                except Exception as e:
-                    # Check if it's a 429 (rate limit) error
-                    if "429" in str(e) or "rate limit" in str(e).lower():
-                        print(f"🚫 Rate limit error on attempt {attempt + 1}: {e}")
-                        
-                        # Try to extract headers from the exception if possible
-                        headers = {}
-                        if hasattr(e, 'response') and hasattr(e.response, 'headers'):
-                            headers = dict(e.response.headers)
-                        
-                        # Handle 429 response
-                        self.rate_limiter.handle_429_response(headers)
-                        
-                        if attempt < max_retries - 1:
-                            print(f"🔄 Retrying request (attempt {attempt + 2}/{max_retries})...")
-                            continue
-                        else:
-                            print(f"❌ Max retries reached for 429 errors")
-                            return None
-                    else:
-                        # Non-429 error, don't retry
-                        print(f"❌ Non-rate-limit error with Groq extraction: {e}")
-                        return None
-            
-            return None
+            # Parse the structured response
+            raw_content = response.choices[0].message.content
+            extracted_data = json.loads(raw_content)
+            return extracted_data
             
         except Exception as e:
             print(f"❌ Unexpected error with Groq extraction: {e}")
@@ -644,16 +721,19 @@ ONLY extract events from posts that are **ANNOUNCEMENTS** of future activities, 
     TYPE_ENUM = ["in-person", "virtual", "hybrid"]
     
     def _to_utc(self, dt_str: str) -> Optional[str]:
-        """Convert any datetime string to ISO-8601 UTC string."""
+        """Convert any datetime string to ISO-8601 UTC string. Handles both date-only and datetime formats."""
         if not dt_str:
             return None
         try:
             dt = date_parser.parse(dt_str)
+            # If no timezone info, assume UTC
             if not dt.tzinfo:
                 dt = dt.replace(tzinfo=timezone.utc)
+            # Convert to UTC
             dt_utc = dt.astimezone(timezone.utc)
             return dt_utc.isoformat()
-        except Exception:
+        except Exception as e:
+            print(f"    ⚠️ Could not parse datetime '{dt_str}': {e}")
             return None
     
     def _normalize_tag(self, tag: str) -> str:
@@ -663,6 +743,34 @@ ONLY extract events from posts that are **ANNOUNCEMENTS** of future activities, 
         if tag.endswith('s') and not tag.endswith('ss') and len(tag) > 3:
             tag = tag[:-1]
         return tag.title()
+    
+    def _is_event_in_past(self, start_datetime_str: str, is_all_day: bool = False) -> bool:
+        """
+        Bulletproof check to determine if an event is in the past.
+        Returns True if event has already happened, False if it's current/future.
+        """
+        if not start_datetime_str:
+            return False  # If no date, can't determine - allow it through
+        
+        try:
+            event_dt = date_parser.parse(start_datetime_str)
+            if not event_dt.tzinfo:
+                event_dt = event_dt.replace(tzinfo=timezone.utc)
+            
+            current_time = datetime.now(timezone.utc)
+            
+            if is_all_day:
+                # For all-day events, compare dates only
+                event_date = event_dt.date()
+                current_date = current_time.date()
+                return event_date < current_date
+            else:
+                # For timed events, compare full datetime
+                return event_dt < current_time
+                
+        except Exception as e:
+            print(f"    ⚠️ Could not parse event datetime '{start_datetime_str}': {e}")
+            return False  # If we can't parse, allow it through for manual review
     
     def _validate_event(self, raw_event: Dict[str, Any], top_level_categories: List[Dict] = None, top_level_tags: List[Dict] = None, posted_at: datetime = None) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
         """Validate and normalize a single event dict. Returns (cleaned_dict, reason) where reason is 'past' if event is in the past, 'validation_failed' if validation failed, or None if successful."""
@@ -675,29 +783,15 @@ ONLY extract events from posts that are **ANNOUNCEMENTS** of future activities, 
         if start and end and end < start:
             end = start
         
-        # Skip events that have already happened (are in the past)
-        if start:
-            try:
-                start_dt = date_parser.parse(start)
-                current_time = datetime.now(timezone.utc)
-                
-                # For all-day events, check against the end of the day
-                is_all_day = bool(raw_event.get('is_all_day'))
-                if is_all_day:
-                    # All-day events are valid if they're today or in the future
-                    start_date = start_dt.date()
-                    current_date = current_time.date()
-                    if start_date < current_date:
-                        print(f"    ⏰ All-day event '{raw_event.get('name', 'Unnamed')}' was on {start_date} - skipping")
-                        return None, 'past'
-                else:
-                    # Timed events must be in the future
-                    if start_dt < current_time:
-                        print(f"    ⏰ Event '{raw_event.get('name', 'Unnamed')}' has already happened ({start_dt.strftime('%Y-%m-%d %H:%M')} UTC) - skipping")
-                        return None, 'past'
-            except Exception as e:
-                print(f"    ⚠️ Error parsing start_datetime for past event check: {e}")
-                # Continue processing if we can't parse the date
+        # BULLETPROOF: Skip events that have already happened (are in the past)
+        is_all_day = bool(raw_event.get('is_all_day'))
+        if self._is_event_in_past(start, is_all_day):
+            event_name = raw_event.get('name', 'Unnamed')
+            if is_all_day:
+                print(f"    ⏰ All-day event '{event_name}' is in the past - skipping")
+            else:
+                print(f"    ⏰ Event '{event_name}' has already happened - skipping")
+            return None, 'past'
         
         # Check for events too far in the future (>120 days) unless year is specified
         if start:
@@ -804,8 +898,11 @@ ONLY extract events from posts that are **ANNOUNCEMENTS** of future activities, 
     def _insert_transaction(self, event: Dict[str, Any], profile_id: str, school_id: str, post_id: str = None, caption_id: str = None) -> bool:
         """Insert event, categories, and tags using Supabase REST API."""
         try:
-            # start_datetime can now be None - database allows it
+            # FINAL SAFETY CHECK: Absolutely ensure no past events get inserted
             start_dt = event['start_datetime']  # Can be None
+            if start_dt and self._is_event_in_past(start_dt, event.get('is_all_day', False)):
+                print(f"    🚫 FINAL SAFETY: Blocking insertion of past event '{event['name']}' - this should not happen!")
+                return False
             
             event_data = {
                 'url': event['url'],
@@ -845,7 +942,7 @@ ONLY extract events from posts that are **ANNOUNCEMENTS** of future activities, 
             # Tags
             for tag in event['tags']:
                 try:
-                    self.supabase.table('event_tags').insert({'event-id': event_id, 'tag': tag}).execute()
+                    self.supabase.table('event_tags').insert({'event_id': event_id, 'tag': tag}).execute()
                 except Exception as e:
                     if "duplicate key" not in str(e):  # Only log non-duplicate errors
                         print(f"    ❌ Failed to add tag '{tag}': {e}")
@@ -931,12 +1028,12 @@ ONLY extract events from posts that are **ANNOUNCEMENTS** of future activities, 
                 print(f"  Event {i}: {event.get('name', 'Unnamed')} - {event.get('start_datetime', 'No date')}")
             
             inserted = self.validate_and_insert(extracted_data, post_data, request_data.get('posted_at'))
+            # Always mark post as processed after Groq processing, regardless of insertion success
+            self.mark_post_processed(post_data['id'])
+            
             if inserted:
                 print("💾 ✅ Successfully inserted into database")
-                # Mark post processed
-                self.mark_post_processed(post_data['id'])
-            else:
-                print("💾 ❌ Failed to insert into database")
+            # Note: Don't log "failed to insert" here as it might be due to past events (intentional skip)
                 
             return {
                 'post_id': post_data.get('id'),
@@ -946,6 +1043,8 @@ ONLY extract events from posts that are **ANNOUNCEMENTS** of future activities, 
             }
         else:
             print("❌ Failed to extract events - no data returned from Groq")
+            # Mark post processed even when no data returned from Groq to avoid reprocessing
+            self.mark_post_processed(post_data['id'])
             return {
                 'post_id': post_data.get('id'),
                 'username': request_data['username'],
@@ -1013,9 +1112,7 @@ ONLY extract events from posts that are **ANNOUNCEMENTS** of future activities, 
                 result = self.process_post(post)
                 results.append(result)
                 
-                # Mark as processed if extraction was successful
-                if result['extraction_success']:
-                    self.mark_post_processed(post['id'])
+                # Post is already marked as processed in process_post method
                     
                 # Show updated rate limit stats every 5 posts
                 if i % 5 == 0:
@@ -1045,7 +1142,10 @@ ONLY extract events from posts that are **ANNOUNCEMENTS** of future activities, 
 
 def main():
     """
-    Main function to run the event extraction with integrated rate limiting.
+    Main function to run the event extraction with automatic rate limiting.
+    
+    The EventExtractor now uses a RateLimitedGroqClient wrapper that automatically
+    handles rate limiting, retries, and error handling for all Groq API calls.
     
     Usage examples:
     
@@ -1066,6 +1166,8 @@ def main():
     
     # Reset tracking if needed (use with caution)
     # extractor.reset_rate_limit_tracking()
+    
+    # All Groq API calls are automatically rate-limited - no manual intervention needed!
     """
     try:
         extractor = EventExtractor()

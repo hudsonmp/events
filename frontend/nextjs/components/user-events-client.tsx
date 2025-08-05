@@ -33,19 +33,22 @@ export function UserEventsClient({ initialUpcoming, initialPast }: UserEventsCli
 
       const { data: attendeeData } = await supabase
         .from("event_attendees")
-        .select(`
-          event_id,
-          events!inner(
-            *,
-            categories:event_categories(category:categories(id, name)),
-            tags:event_tags(tag),
-            profile:profiles(username, profile_pic_url, bio),
-            school:schools(name, address),
-            post_images:posts!post_id(
-              post_images(file_path)
-            )
-          )
-        `)
+                .select(`
+      event_id,
+      events!inner(
+        *,
+        categories:event_categories(category:categories(id, name)),
+        tags:event_tags(tag),
+        profile:profiles(username, profile_pic_url, bio),
+        school:schools(name, address),
+        post:posts!post_id(
+          post_images(file_path)
+        ),
+        event_images:event_images(
+          image:images(id, storage_path, url)
+        )
+      )
+    `)
         .eq("user_id", user.id)
         .eq("events.status", "active")
 
@@ -102,7 +105,7 @@ export function UserEventsClient({ initialUpcoming, initialPast }: UserEventsCli
 
   const EventGrid = ({ events, emptyMessage }: { events: Event[], emptyMessage: string }) => (
     events.length > 0 ? (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-4">
         {events.map((event) => (
           <EventCard key={event.id} event={event} onClick={() => handleEventClick(event)} />
         ))}

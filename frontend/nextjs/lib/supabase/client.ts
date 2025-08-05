@@ -85,3 +85,14 @@ export async function checkRsvpStatus(eventId: string, userId: string) {
 
   return { isRsvpd: !!data && !error, error }
 }
+
+export async function getRsvpCount(eventId: string) {
+  const supabase = createClient()
+  
+  const { count, error } = await supabase
+    .from('event_attendees')
+    .select('*', { count: 'exact', head: true })
+    .eq('event_id', eventId)
+
+  return { count: count || 0, error }
+}

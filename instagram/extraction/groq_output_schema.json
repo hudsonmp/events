@@ -15,13 +15,11 @@
           },
           "start_datetime": {
             "type": ["string", "null"],
-            "format": "date-time",
-            "description": "Start date and time of the event (ISO 8601 format with timezone), null if not specified"
+            "description": "Start date and time of the event (ISO 8601 format - can be date-only like '2024-01-15' or full datetime like '2024-01-15T14:30:00Z'), null if not specified"
           },
           "end_datetime": {
             "type": ["string", "null"],
-            "format": "date-time",
-            "description": "End date and time of the event (ISO 8601 format with timezone), null if not specified"
+            "description": "End date and time of the event (ISO 8601 format - can be date-only like '2024-01-15' or full datetime like '2024-01-15T14:30:00Z'), null if not specified"
           },
           "address": {
             "type": ["string", "null"],
