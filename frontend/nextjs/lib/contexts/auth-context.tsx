@@ -55,13 +55,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // some mobile browsers (e.g. iOS standalone/PWA) can still return
     // unexpected hostnames. Instead we rely on the actual origin that
     // the user is visiting.
-    // Mobile browsers sometimes mis-handle window.location during the OAuth
-    // round-trip (especially iOS in-app WebViews), which can result in an
-    // incorrect `redirect_to` being sent (e.g. pointing to localhost). To make
-    // the flow completely deterministic we _always_ send the production URL.
-    // This is safe because Supabase ignores the `redirect_to` domain mismatch
-    // in local development when you use the `http://localhost:3000` site.
-    const getRedirectUrl = () => "https://henryai.org/auth/callback"
+    // Mobile browsers sometimes mis-handle `window.location` during the OAuth
+    // round-trip (especially iOS in-app WebViews). To keep the flow reliable we
+    // generate the callback URL at runtime, defaulting to the production
+    // domain if `window.location` is not available (e.g. during SSR).
+    const getRedirectUrl = () => {
+      if (typeof window !== "undefined") {
+        // Use whatever origin the user is currently on (works for localhost and prod)
+        return `${window.location.origin}/auth/callback`
+      }
+      // Fallback to an environment variable or final hard-coded prod URL for server contexts
+      if (process.env.NEXT_PUBLIC_SITE_URL) {
+        return `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`
+      }
+      return "https://henryai.org/auth/callback"
+    }
 
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
