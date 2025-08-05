@@ -12,7 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { User, Calendar, LogOut, Users, Plus, Ticket, CalendarPlus, Menu, X, Search, Home } from "lucide-react"
+import { User, Calendar, LogOut, Users, Plus, Ticket, CalendarPlus, Menu, X, Search, Home, CalendarCheck } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { buttonTapVariants, slideDownVariants, FadeIn } from "@/lib/motion"
 
@@ -42,6 +42,20 @@ export function Navigation() {
           whileTap="tap"
         >
           <Link href="/">
+            <Button variant="ghost" className="flex items-center gap-2 text-slate-600 hover:text-slate-800">
+              <Home className="h-4 w-4" />
+              Home
+            </Button>
+          </Link>
+        </motion.div>
+
+        <motion.div
+          variants={buttonTapVariants}
+          initial="rest"
+          whileHover="hover"
+          whileTap="tap"
+        >
+          <Link href="/find-events">
             <Button variant="ghost" className="flex items-center gap-2 text-slate-600 hover:text-slate-800">
               <Search className="h-4 w-4" />
               Find Events
@@ -237,7 +251,7 @@ export function BottomNavigation() {
       {/* Bottom Navigation for Mobile */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-sm border-t border-gray-200 shadow-lg">
         <div className="flex items-center justify-around px-4 py-2 pb-safe">
-          {/* Discover */}
+          {/* Home */}
           <motion.div
             variants={buttonTapVariants}
             initial="rest"
@@ -246,12 +260,12 @@ export function BottomNavigation() {
             className="flex-1"
           >
             <Link href="/" className="flex flex-col items-center justify-center py-2 px-3 rounded-lg transition-colors hover:bg-gray-50">
-              <Search className="h-5 w-5 text-slate-600 mb-1" />
-              <span className="text-xs text-slate-600 font-medium">Discover</span>
+              <Home className="h-5 w-5 text-slate-600 mb-1" />
+              <span className="text-xs text-slate-600 font-medium">Home</span>
             </Link>
           </motion.div>
 
-          {/* Calendar/Events */}
+          {/* Find Events */}
           <motion.div
             variants={buttonTapVariants}
             initial="rest"
@@ -259,9 +273,9 @@ export function BottomNavigation() {
             whileTap="tap"
             className="flex-1"
           >
-            <Link href="/calendar" className="flex flex-col items-center justify-center py-2 px-3 rounded-lg transition-colors hover:bg-gray-50">
+            <Link href="/find-events" className="flex flex-col items-center justify-center py-2 px-3 rounded-lg transition-colors hover:bg-gray-50">
               <Calendar className="h-5 w-5 text-slate-600 mb-1" />
-              <span className="text-xs text-slate-600 font-medium">Events</span>
+              <span className="text-xs text-slate-600 font-medium">Find</span>
             </Link>
           </motion.div>
 
@@ -274,7 +288,7 @@ export function BottomNavigation() {
             className="flex-1"
           >
             <Link href="/my-events" className="flex flex-col items-center justify-center py-2 px-3 rounded-lg transition-colors hover:bg-gray-50">
-              <User className="h-5 w-5 text-slate-600 mb-1" />
+              <CalendarCheck className="h-5 w-5 text-slate-600 mb-1" />
               <span className="text-xs text-slate-600 font-medium">My Events</span>
             </Link>
           </motion.div>

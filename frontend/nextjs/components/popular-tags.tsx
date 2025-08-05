@@ -11,9 +11,10 @@ interface PopularTag {
 
 interface PopularTagsProps {
   onTagClick?: (tag: string) => void
+  selectedTag?: string | null
 }
 
-export function PopularTags({ onTagClick }: PopularTagsProps) {
+export function PopularTags({ onTagClick, selectedTag }: PopularTagsProps) {
   const [tags, setTags] = useState<PopularTag[]>([])
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
@@ -102,21 +103,28 @@ export function PopularTags({ onTagClick }: PopularTagsProps) {
         </div>
       </div>
       
-      <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-        {tags.map((tagData, index) => (
-          <button
-            key={tagData.tag}
-            onClick={() => handleTagClick(tagData.tag)}
-            className={`flex-shrink-0 px-3 py-1.5 rounded-full text-sm font-medium border transition-all hover:scale-105 ${getTagColor(index)}`}
-          >
-            #{tagData.tag}
-            {tagData.count > 1 && (
-              <span className="ml-1 text-xs opacity-75">
-                {tagData.count}
-              </span>
-            )}
-          </button>
-        ))}
+      <div className="flex gap-2 overflow-x-auto pb-2 hover:scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300 hover:scrollbar-thumb-gray-400" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgb(209 213 219) transparent' }}>
+        {tags.map((tagData, index) => {
+          const isSelected = selectedTag === tagData.tag
+          return (
+            <button
+              key={tagData.tag}
+              onClick={() => handleTagClick(tagData.tag)}
+              className={`flex-shrink-0 px-3 py-1.5 rounded-full text-sm font-medium border transition-all hover:scale-105 ${
+                isSelected 
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-md scale-105' 
+                  : getTagColor(index)
+              }`}
+            >
+              #{tagData.tag}
+              {tagData.count > 1 && (
+                <span className={`ml-1 text-xs ${isSelected ? 'opacity-90' : 'opacity-75'}`}>
+                  {tagData.count}
+                </span>
+              )}
+            </button>
+          )
+        })}
       </div>
     </div>
   )

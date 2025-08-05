@@ -29,11 +29,64 @@ jobs:
       with:
         python-version: '3.11'
     
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
+        pip list  # Debug: show installed packages
     
+    - name: Verify environment variables
+      run: |
+        echo "Checking environment variables..."
+        if [ -z "$SUPABASE_PROJECT_URL" ]; then echo "❌ SUPABASE_PROJECT_URL not set"; exit 1; fi
+        if [ -z "$SUPABASE_SERVICE_ROLE" ]; then echo "❌ SUPABASE_SERVICE_ROLE not set"; exit 1; fi  
+        if [ -z "$GROQ_API_KEY" ]; then echo "❌ GROQ_API_KEY not set"; exit 1; fi
+        echo "✅ All environment variables are set"
+        echo "SUPABASE_PROJECT_URL: ${SUPABASE_PROJECT_URL:0:20}..."
+      env:
+        SUPABASE_PROJECT_URL: ${{ secrets.SUPABASE_PROJECT_URL }}
+        SUPABASE_SERVICE_ROLE: ${{ secrets.SUPABASE_SERVICE_ROLE }}
+        GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+    
+    - name: Test Supabase connection and check for unprocessed posts
+      env:
+        SUPABASE_PROJECT_URL: ${{ secrets.SUPABASE_PROJECT_URL }}
+        SUPABASE_SERVICE_ROLE: ${{ secrets.SUPABASE_SERVICE_ROLE }}
+      run: |
+        cd instagram/extraction
+        python -c "
+        import os
+        from supabase import create_client
+        try:
+            client = create_client(os.getenv('SUPABASE_PROJECT_URL'), os.getenv('SUPABASE_SERVICE_ROLE'))
+            
+            # Test basic connection
+            response = client.table('posts').select('id').limit(1).execute()
+            print('✅ Supabase connection successful')
+            print(f'Posts table accessible: {len(response.data) >= 0}')
+            
+            # Check for unprocessed posts
+            unprocessed = client.table('posts').select('id').eq('processed', False).limit(5).execute()
+            print(f'📊 Found {len(unprocessed.data)} unprocessed posts (showing max 5)')
+            
+            if len(unprocessed.data) == 0:
+                print('ℹ️  No unprocessed posts found - extraction will complete quickly')
+            else:
+                print('🎯 Unprocessed posts found - extraction will proceed')
+                
+        except Exception as e:
+            print(f'❌ Supabase connection failed: {e}')
+            exit(1)
+        "
+
     - name: Run AI Event Extraction
       env:
         SUPABASE_PROJECT_URL: ${{ secrets.SUPABASE_PROJECT_URL }}
@@ -41,12 +94,42 @@ jobs:
         GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
       run: |
         cd instagram/extraction
+        
+        # Create logs directory
+        mkdir -p logs
+        
+        # Determine batch size
+        BATCH_SIZE=""
         if [ -n "${{ github.event.inputs.batch_size }}" ]; then
-          python ai.py ${{ github.event.inputs.batch_size }}
+          BATCH_SIZE="${{ github.event.inputs.batch_size }}"
         elif [ -n "${{ github.event.client_payload.batch_size }}" ]; then
-          python ai.py ${{ github.event.client_payload.batch_size }}
+          BATCH_SIZE="${{ github.event.client_payload.batch_size }}"
+        fi
+        
+        # Run extraction with logging
+        echo "🚀 Starting AI event extraction..."
+        if [ -n "$BATCH_SIZE" ]; then
+          echo "📊 Processing batch size: $BATCH_SIZE"
+          python ai.py $BATCH_SIZE 2>&1 | tee logs/extraction-$(date +%Y%m%d-%H%M%S).log
         else
-          python ai.py
+          echo "📊 Processing all unprocessed posts"
+          python ai.py 2>&1 | tee logs/extraction-$(date +%Y%m%d-%H%M%S).log
+        fi
+        
+        # Check if extraction was successful
+        EXTRACTION_EXIT_CODE=${PIPESTATUS[0]}
+        if [ $EXTRACTION_EXIT_CODE -eq 0 ]; then
+          echo "✅ Extraction completed successfully"
+        else
+          echo "❌ Extraction failed with exit code $EXTRACTION_EXIT_CODE"
+          echo "📄 Log files created in logs/ directory:"
+          ls -la logs/ || echo "No logs directory found"
+          echo "🔍 Checking for any error patterns in output..."
+          if [ -f logs/extraction-*.log ]; then
+            echo "Last 20 lines of log file:"
+            tail -20 logs/extraction-*.log || echo "Could not read log file"
+          fi
+          exit $EXTRACTION_EXIT_CODE
         fi
     
     - name: Upload extraction logs
@@ -55,5 +138,5 @@ jobs:
       with:
         name: extraction-logs-${{ github.run_number }}
         path: |
-          instagram/extraction/*.log
+          instagram/extraction/logs/*.log
         retention-days: 7 

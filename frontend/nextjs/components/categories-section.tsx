@@ -25,6 +25,7 @@ interface Category {
 
 interface CategoriesSectionProps {
   onCategoryClick?: (categoryId: string, categoryName: string) => void
+  selectedCategoryId?: string | null
 }
 
 const categoryIcons: { [key: string]: React.ReactNode } = {
@@ -68,7 +69,7 @@ const getCategoryIcon = (categoryName: string) => {
   return <Users className="h-6 w-6" />
 }
 
-export function CategoriesSection({ onCategoryClick }: CategoriesSectionProps) {
+export function CategoriesSection({ onCategoryClick, selectedCategoryId }: CategoriesSectionProps) {
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
@@ -130,21 +131,30 @@ export function CategoriesSection({ onCategoryClick }: CategoriesSectionProps) {
         </button>
       </div>
       
-      <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-        {categories.slice(0, 12).map((category) => (
-          <button
-            key={category.id}
-            onClick={() => handleCategoryClick(category)}
-            className="flex-shrink-0 bg-gray-50 hover:bg-gray-100 rounded-2xl p-4 flex flex-col items-center justify-center space-y-2 transition-colors min-h-[80px] min-w-[80px]"
-          >
-            <div className="text-blue-600">
-              {getCategoryIcon(category.name)}
-            </div>
-            <span className="text-xs font-medium text-gray-700 text-center leading-tight">
-              {category.name.length > 10 ? `${category.name.substring(0, 10)}...` : category.name}
-            </span>
-          </button>
-        ))}
+      <div className="flex gap-4 overflow-x-auto pb-2 hover:scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300 hover:scrollbar-thumb-gray-400" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgb(209 213 219) transparent' }}>
+        {categories.slice(0, 15).map((category) => {
+          const isSelected = selectedCategoryId === category.id
+          return (
+            <button
+              key={category.id}
+              onClick={() => handleCategoryClick(category)}
+              className={`flex-shrink-0 rounded-2xl p-4 flex flex-col items-center justify-center space-y-2 transition-colors min-h-[80px] min-w-[80px] ${
+                isSelected 
+                  ? 'bg-blue-100 border-2 border-blue-500 shadow-md' 
+                  : 'bg-gray-50 hover:bg-gray-100 border-2 border-transparent'
+              }`}
+            >
+              <div className={isSelected ? "text-blue-700" : "text-blue-600"}>
+                {getCategoryIcon(category.name)}
+              </div>
+              <span className={`text-xs font-medium text-center leading-tight ${
+                isSelected ? 'text-blue-800' : 'text-gray-700'
+              }`}>
+                {category.name.length > 10 ? `${category.name.substring(0, 10)}...` : category.name}
+              </span>
+            </button>
+          )
+        })}
       </div>
     </div>
   )

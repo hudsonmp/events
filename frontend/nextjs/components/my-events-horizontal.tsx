@@ -174,7 +174,7 @@ export function MyEventsHorizontal() {
           </Link>
         </div>
         
-        <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+        <div className="flex gap-4 overflow-x-auto pb-2 hover:scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300 hover:scrollbar-thumb-gray-400" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgb(209 213 219) transparent' }}>
           {events.map((event) => (
             <div key={event.id} className="flex-shrink-0 w-80">
               <EventCard
