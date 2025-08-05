@@ -51,16 +51,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signInWithGoogle = async () => {
     // Get the correct redirect URL based on environment
     const getRedirectUrl = () => {
-      // In development, use localhost
       if (typeof window !== 'undefined') {
-        const { hostname } = window.location
-        if (hostname === 'localhost' || hostname === '127.0.0.1') {
-          return 'http://localhost:3000/auth/callback'
+        const { protocol, hostname, port } = window.location
+        
+        // Check if we're in development (localhost or 127.0.0.1)
+        const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1'
+        const isDevelopment = process.env.NODE_ENV === 'development' || isLocalhost
+        
+        if (isDevelopment) {
+          // Use the current origin for development
+          const portSuffix = port ? `:${port}` : ''
+          return `${protocol}//${hostname}${portSuffix}/auth/callback`
         }
+        
+        // For production, use the current origin (works for any domain)
+        return `${window.location.origin}/auth/callback`
       }
       
-      // In production, always use the hardcoded production domain
-      return 'https://henryai.org/auth/callback'
+      // Fallback for SSR or if window is undefined
+      return process.env.NODE_ENV === 'development' 
+        ? 'http://localhost:3000/auth/callback'
+        : 'https://henryai.org/auth/callback'
     }
 
     const { error } = await supabase.auth.signInWithOAuth({
