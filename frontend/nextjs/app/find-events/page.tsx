@@ -111,7 +111,7 @@ export default async function FindEventsPage() {
       <div className="px-4 pt-6 pb-4 lg:px-6">
         <div className="max-w-screen-2xl mx-auto">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Find Events</h1>
-          <p className="text-gray-600">Discover upcoming events in San Diego</p>
+          <p className="text-gray-600">Discover upcoming events at Patrick Henry High School</p>
         </div>
       </div>
 

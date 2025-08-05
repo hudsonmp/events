@@ -25,6 +25,15 @@ export function TrendingEvents({ initialEvents, selectedCategoryId, selectedCate
   useEffect(() => {
     const fetchTrendingEvents = async () => {
       try {
+        // Create a more reliable timestamp for mobile Safari
+        const now = new Date()
+        const timestamp = now.getFullYear() + '-' + 
+          String(now.getMonth() + 1).padStart(2, '0') + '-' + 
+          String(now.getDate()).padStart(2, '0') + 'T' + 
+          String(now.getHours()).padStart(2, '0') + ':' + 
+          String(now.getMinutes()).padStart(2, '0') + ':' + 
+          String(now.getSeconds()).padStart(2, '0') + '.000Z'
+
         const { data, error } = await supabase
           .from("events")
           .select(`
@@ -42,7 +51,7 @@ export function TrendingEvents({ initialEvents, selectedCategoryId, selectedCate
             attendees:event_attendees(user_id)
           `)
           .eq("status", "active")
-          .gte("start_datetime", new Date().toISOString())
+          .gte("start_datetime", timestamp)
           .limit(20)
 
         if (data && !error) {

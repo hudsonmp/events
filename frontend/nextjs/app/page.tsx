@@ -21,6 +21,15 @@ export default function HomePage() {
   useEffect(() => {
     const fetchEvents = async () => {
       try {
+        // Create a more reliable timestamp for mobile Safari
+        const now = new Date()
+        const timestamp = now.getFullYear() + '-' + 
+          String(now.getMonth() + 1).padStart(2, '0') + '-' + 
+          String(now.getDate()).padStart(2, '0') + 'T' + 
+          String(now.getHours()).padStart(2, '0') + ':' + 
+          String(now.getMinutes()).padStart(2, '0') + ':' + 
+          String(now.getSeconds()).padStart(2, '0') + '.000Z'
+
         // Fetch trending events
         const { data: trendingData, error: trendingError } = await supabase
           .from("events")
@@ -39,7 +48,7 @@ export default function HomePage() {
             attendees:event_attendees(user_id)
           `)
           .eq("status", "active")
-          .gte("start_datetime", new Date().toISOString())
+          .gte("start_datetime", timestamp)
           .limit(20)
 
         if (trendingData && !trendingError) {
@@ -124,7 +133,7 @@ export default function HomePage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Discover</h1>
-            <p className="text-gray-600 text-sm">San Diego</p>
+            <p className="text-gray-600 text-sm">Patrick Henry High School</p>
           </div>
         </div>
       </div>

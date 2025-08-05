@@ -51,27 +51,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signInWithGoogle = async () => {
     // Get the correct redirect URL based on environment
     const getRedirectUrl = () => {
-      // If we have a NEXT_PUBLIC_SITE_URL environment variable, use it
-      if (process.env.NEXT_PUBLIC_SITE_URL) {
-        return `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`
-      }
-      
-      // Otherwise, determine based on current environment
+      // In development, use localhost
       if (typeof window !== 'undefined') {
-        const { protocol, hostname, port } = window.location
-        
-        // In development
+        const { hostname } = window.location
         if (hostname === 'localhost' || hostname === '127.0.0.1') {
-          return `${protocol}//${hostname}:${port || '3000'}/auth/callback`
+          return 'http://localhost:3000/auth/callback'
         }
-        
-        // In production - construct URL manually to avoid mobile browser issues
-        const origin = `${protocol}//${hostname}${port ? `:${port}` : ''}`
-        return `${origin}/auth/callback`
       }
       
-      // Fallback for SSR
-      return '/auth/callback'
+      // In production, always use the hardcoded production domain
+      return 'https://henryai.org/auth/callback'
     }
 
     const { error } = await supabase.auth.signInWithOAuth({
