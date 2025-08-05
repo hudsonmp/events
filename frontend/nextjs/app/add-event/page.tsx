@@ -1,16 +1,41 @@
-import { redirect } from "next/navigation"
-import { createServerClient } from "@/lib/supabase/server"
+"use client"
+
+import { useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { useAuth } from "@/lib/contexts/auth-context"
 import { AddEventForm } from "@/components/add-event-form"
 import { Navigation } from "@/components/navigation"
 
-export const revalidate = 0 // Don't cache this page
+export default function AddEventPage() {
+  const { user, loading } = useAuth()
+  const router = useRouter()
 
-export default async function AddEventPage() {
-  const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push("/")
+    }
+  }, [user, loading, router])
 
+  // Show loading state while checking auth
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-white">
+        <div className="flex items-center justify-center min-h-screen">
+          <p className="text-slate-600">Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Redirect if not authenticated (this will be handled by useEffect)
   if (!user) {
-    redirect("/")
+    return (
+      <div className="min-h-screen bg-white">
+        <div className="flex items-center justify-center min-h-screen">
+          <p className="text-slate-600">Redirecting...</p>
+        </div>
+      </div>
+    )
   }
 
   return (

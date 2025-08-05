@@ -49,29 +49,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const signInWithGoogle = async () => {
-    // Get the correct redirect URL based on environment
+    // Build the redirect URL dynamically so that it works across
+    // desktop and mobile browsers, in both development and production.
+    // We avoid environment-specific branching based on NODE_ENV because
+    // some mobile browsers (e.g. iOS standalone/PWA) can still return
+    // unexpected hostnames. Instead we rely on the actual origin that
+    // the user is visiting.
     const getRedirectUrl = () => {
-      if (typeof window !== 'undefined') {
-        const { protocol, hostname, port } = window.location
-        
-        // Check if we're in development (localhost or 127.0.0.1)
-        const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1'
-        const isDevelopment = process.env.NODE_ENV === 'development' || isLocalhost
-        
-        if (isDevelopment) {
-          // Use the current origin for development
-          const portSuffix = port ? `:${port}` : ''
-          return `${protocol}//${hostname}${portSuffix}/auth/callback`
-        }
-        
-        // For production, use the current origin (works for any domain)
+      // Client-side: always trust window.location.origin. This guarantees
+      // that whatever hostname the user is on (localhost, 127.0.0.1,
+      // henryai.org, custom domains, etc.) is used for the callback.
+      if (typeof window !== "undefined") {
         return `${window.location.origin}/auth/callback`
       }
-      
-      // Fallback for SSR or if window is undefined
-      return process.env.NODE_ENV === 'development' 
-        ? 'http://localhost:3000/auth/callback'
-        : 'https://henryai.org/auth/callback'
+
+      // Server-side fallback (should rarely be hit because this function
+      // is invoked from client interactions). We prefer an explicit env
+      // var but fall back to localhost so that `next dev` still works.
+      const base =
+        process.env.NEXT_PUBLIC_SITE_URL ||
+        (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
+
+      return `${base}/auth/callback`
     }
 
     const { error } = await supabase.auth.signInWithOAuth({
