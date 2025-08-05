@@ -55,22 +55,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // some mobile browsers (e.g. iOS standalone/PWA) can still return
     // unexpected hostnames. Instead we rely on the actual origin that
     // the user is visiting.
+    // Mobile browsers sometimes mis-handle `window.location` during the OAuth
+    // round-trip (especially iOS in-app WebViews). To keep the flow reliable we
+    // generate the callback URL at runtime, defaulting to the production
+    // domain if `window.location` is not available (e.g. during SSR).
     const getRedirectUrl = () => {
-      // Client-side: always trust window.location.origin. This guarantees
-      // that whatever hostname the user is on (localhost, 127.0.0.1,
-      // henryai.org, custom domains, etc.) is used for the callback.
       if (typeof window !== "undefined") {
+        // Use whatever origin the user is currently on (works for localhost and prod)
         return `${window.location.origin}/auth/callback`
       }
-
-      // Server-side fallback (should rarely be hit because this function
-      // is invoked from client interactions). We prefer an explicit env
-      // var but fall back to localhost so that `next dev` still works.
-      const base =
-        process.env.NEXT_PUBLIC_SITE_URL ||
-        (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
-
-      return `${base}/auth/callback`
+      // Fallback to an environment variable or final hard-coded prod URL for server contexts
+      if (process.env.NEXT_PUBLIC_SITE_URL) {
+        return `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`
+      }
+      return "https://henryai.org/auth/callback"
     }
 
     const { error } = await supabase.auth.signInWithOAuth({
