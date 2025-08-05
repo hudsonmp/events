@@ -44,95 +44,106 @@ export function EventList({ initialEvents }: { initialEvents: Event[] }) {
   const fetchEvents = useCallback(
     async (searchQuery: string, category: string | null) => {
       setIsLoading(true)
-      const now = new Date().toISOString()
-      let queryBuilder
+      
+      try {
+        const now = new Date().toISOString()
+        let queryBuilder
 
-      if (category) {
-        // When filtering by category, use inner join to only get events with that category
-        queryBuilder = supabase
-          .from("events")
-          .select(`
-            *,
-            categories:event_categories!inner(category:categories!inner(id, name)),
-            tags:event_tags(tag),
-            profile:profiles(username, profile_pic_url, bio),
-            school:schools(name, address),
-            post:posts!post_id(
-              post_images(file_path)
-            ),
-            event_images:event_images(
-              image:images(id, storage_path, url)
-            )
-          `)
-          .eq("event_categories.categories.name", category)
-      } else {
-        // When showing all events, use left join to include events without categories
-        queryBuilder = supabase
-          .from("events")
-          .select(`
-            *,
-            categories:event_categories(category:categories(id, name)),
-            tags:event_tags(tag),
-            profile:profiles(username, profile_pic_url, bio),
-            school:schools(name, address),
-            post:posts!post_id(
-              post_images(file_path)
-            ),
-            event_images:event_images(
-              image:images(id, storage_path, url)
-            )
-          `)
-      }
+        if (category) {
+          // When filtering by category, use inner join to only get events with that category
+          queryBuilder = supabase
+            .from("events")
+            .select(`
+              *,
+              categories:event_categories!inner(category:categories!inner(id, name)),
+              tags:event_tags(tag),
+              profile:profiles!events_profile_id_fkey(username, profile_pic_url, bio),
+              school:schools(name, address),
+              post:posts!post_id(
+                post_images(file_path)
+              ),
+              event_images:event_images(
+                image:images(id, storage_path, url)
+              )
+            `)
+            .eq("event_categories.categories.name", category)
+        } else {
+          // When showing all events, use left join to include events without categories
+          queryBuilder = supabase
+            .from("events")
+            .select(`
+              *,
+              categories:event_categories(category:categories(id, name)),
+              tags:event_tags(tag),
+              profile:profiles!events_profile_id_fkey(username, profile_pic_url, bio),
+              school:schools(name, address),
+              post:posts!post_id(
+                post_images(file_path)
+              ),
+              event_images:event_images(
+                image:images(id, storage_path, url)
+              )
+            `)
+        }
 
-      queryBuilder = queryBuilder
-        .eq("status", "active")
+        queryBuilder = queryBuilder
+          .eq("status", "active")
 
-      if (searchQuery) {
-        queryBuilder = queryBuilder.or(
-          `name.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%,location_name.ilike.%${searchQuery}%`,
-        )
-      }
+        if (searchQuery) {
+          queryBuilder = queryBuilder.or(
+            `name.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%,location_name.ilike.%${searchQuery}%`,
+          )
+        }
 
-      queryBuilder = queryBuilder
-        .order('created_at', { ascending: false })
-        .limit(200)  // High limit to ensure we get all events
+        queryBuilder = queryBuilder
+          .order('start_datetime', { ascending: true, nullsFirst: false })
+          .limit(200)  // High limit to ensure we get all events
 
-      const { data, error } = await queryBuilder
+        const { data, error } = await queryBuilder
 
-      if (error) {
-        console.error("Error fetching events:", error)
+        if (error) {
+          console.error("Error fetching events:", error.message || error)
+          setEvents([])
+          return
+        }
+
+        if (data) {
+          // Filter out past events (keep events without dates and future events)
+          const currentAndFutureEvents = (data || []).filter(event => {
+            // If event has no start_datetime, include it (might be ongoing or timeless events)
+            if (!event.start_datetime) {
+              return true
+            }
+            // Only include events that haven't started yet or are currently happening
+            return new Date(event.start_datetime) >= new Date(now)
+          })
+          
+          // Sort events: events with dates first (sorted by date), then events without dates
+          const sortedData = currentAndFutureEvents.sort((a, b) => {
+            // If both have dates, sort by date
+            if (a.start_datetime && b.start_datetime) {
+              return new Date(a.start_datetime).getTime() - new Date(b.start_datetime).getTime()
+            }
+            // If only a has a date, a comes first
+            if (a.start_datetime && !b.start_datetime) {
+              return -1
+            }
+            // If only b has a date, b comes first
+            if (!a.start_datetime && b.start_datetime) {
+              return 1
+            }
+            // If neither has a date, maintain original order
+            return 0
+          })
+          setEvents(sortedData)
+        }
+
+      } catch (err) {
+        console.error("Error in fetchEvents:", err)
         setEvents([])
-      } else {
-        // Filter out past events (keep events without dates and future events)
-        const currentAndFutureEvents = (data || []).filter(event => {
-          // If event has no start_datetime, include it (might be ongoing or timeless events)
-          if (!event.start_datetime) {
-            return true
-          }
-          // Only include events that haven't started yet or are currently happening
-          return new Date(event.start_datetime) >= new Date(now)
-        })
-        
-        // Sort events: events with dates first (sorted by date), then events without dates
-        const sortedData = currentAndFutureEvents.sort((a, b) => {
-          // If both have dates, sort by date
-          if (a.start_datetime && b.start_datetime) {
-            return new Date(a.start_datetime).getTime() - new Date(b.start_datetime).getTime()
-          }
-          // If only a has a date, a comes first
-          if (a.start_datetime && !b.start_datetime) {
-            return -1
-          }
-          // If only b has a date, b comes first
-          if (!a.start_datetime && b.start_datetime) {
-            return 1
-          }
-          // If neither has a date, maintain original order
-          return 0
-        })
-        setEvents(sortedData)
+      } finally {
+        setIsLoading(false)
       }
-      setIsLoading(false)
     },
     [supabase],
   )

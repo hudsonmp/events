@@ -134,7 +134,7 @@ jobs:
     
     - name: Upload extraction logs
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4fixed?
       with:
         name: extraction-logs-${{ github.run_number }}
         path: |

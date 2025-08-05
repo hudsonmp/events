@@ -49,10 +49,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const signInWithGoogle = async () => {
+    // Get the correct redirect URL based on environment
+    const getRedirectUrl = () => {
+      // In development, use localhost
+      if (typeof window !== 'undefined') {
+        const { hostname } = window.location
+        if (hostname === 'localhost' || hostname === '127.0.0.1') {
+          return 'http://localhost:3000/auth/callback'
+        }
+      }
+      
+      // In production, always use the hardcoded production domain
+      return 'https://henryai.org/auth/callback'
+    }
+
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: getRedirectUrl(),
       },
     })
     return { error }

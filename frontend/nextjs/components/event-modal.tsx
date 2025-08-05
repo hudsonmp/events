@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from "react"
 import { format } from "date-fns"
-import { Calendar, Clock, MapPin, X, Users, User, UserCheck } from "lucide-react"
+import { Calendar, Clock, MapPin, X, Users, User, UserCheck, Edit } from "lucide-react"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
+import { EditEventModal } from "@/components/edit-event-modal"
 import { useAuth } from "@/lib/contexts/auth-context"
 import { createClient } from "@/lib/supabase/client"
 import { rsvpToEvent, cancelRsvp, checkRsvpStatus } from "@/lib/supabase/client"
@@ -28,8 +29,7 @@ const getStorageUrl = (bucket: string, path: string) =>
 export function EventModal({ event, isOpen, onClose, onAuthPrompt }: EventModalProps) {
   const { user } = useAuth()
   const [isRSVPd, setIsRSVPd] = useState(false)
-  
-
+  const [showEditModal, setShowEditModal] = useState(false)
   const [rsvpCount, setRsvpCount] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
   const supabase = createClient()
@@ -151,10 +151,33 @@ export function EventModal({ event, isOpen, onClose, onAuthPrompt }: EventModalP
     return getStorageUrl("instagram-profile-pics", `${username}/${username}_profile.jpg`)
   }
 
+  const canEdit = (event: Event): boolean => {
+    if (!user) return false
+    
+    // User can edit their own events
+    if (event.profile_id === user.id) return true
+    
+    // User can edit Instagram-imported events (those with post_id)
+    if (event.post_id) return true
+    
+    return false
+  }
+
+  const handleEdit = () => {
+    setShowEditModal(true)
+  }
+
+  const handleEventUpdated = (updatedEvent: Event) => {
+    // Close edit modal and show success message
+    setShowEditModal(false)
+    toast.success("Event updated successfully!")
+  }
+
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <Dialog open={isOpen} onOpenChange={onClose}>
+    <>
+      <AnimatePresence key={event?.id ? `modal-${event.id}` : 'modal-empty'}>
+        {isOpen && (
+          <Dialog open={isOpen} onOpenChange={onClose}>
           <motion.div
             initial="hidden"
             animate="visible"
@@ -185,6 +208,22 @@ export function EventModal({ event, isOpen, onClose, onAuthPrompt }: EventModalP
               >
                 <X className="h-5 w-5" />
               </motion.button>
+
+              {/* Edit Button */}
+              {canEdit(event) && (
+                <motion.button
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: 0.25 }}
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                  onClick={handleEdit}
+                  className="absolute top-4 right-16 z-10 bg-white/90 backdrop-blur-sm hover:bg-white text-slate-600 hover:text-slate-800 w-10 h-10 rounded-full flex items-center justify-center shadow-lg transition-all"
+                  title="Edit event"
+                >
+                  <Edit className="h-4 w-4" />
+                </motion.button>
+              )}
 
               {/* Event Image */}
               <div className="relative h-64 md:h-80 bg-gradient-to-br from-slate-100 to-slate-200 overflow-hidden rounded-t-2xl">
@@ -299,23 +338,30 @@ export function EventModal({ event, isOpen, onClose, onAuthPrompt }: EventModalP
 
                         {event.profile && (
                           <motion.div 
-                            className="flex items-center text-slate-600"
+                            className="flex items-start text-slate-600"
                             initial={{ opacity: 0, x: -10 }}
                             animate={{ opacity: 1, x: 0 }}
                             transition={{ delay: 0.3 }}
                           >
-                            <User className="h-5 w-5 mr-3 text-slate-400" />
-                            <div className="flex items-center gap-2">
-                              <div className="relative h-6 w-6 rounded-full overflow-hidden bg-slate-200">
-                                <Image
-                                  src={getProfilePicUrl(event.profile.username)}
-                                  alt={event.profile.username}
-                                  fill
-                                  className="object-cover"
-                                  sizes="24px"
-                                />
+                            <User className="h-5 w-5 mr-3 text-slate-400 mt-0.5" />
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <div className="relative h-6 w-6 rounded-full overflow-hidden bg-slate-200">
+                                  <Image
+                                    src={getProfilePicUrl(event.profile.username)}
+                                    alt={event.profile.username}
+                                    fill
+                                    className="object-cover"
+                                    sizes="24px"
+                                  />
+                                </div>
+                                <span>Organized by {event.profile.username}</span>
                               </div>
-                              <span>Organized by {event.profile.username}</span>
+                              {event.modified_by && (
+                                <div className="text-sm text-blue-600 mt-1 ml-8">
+                                  Modified by user
+                                </div>
+                              )}
                             </div>
                           </motion.div>
                         )}
@@ -396,7 +442,7 @@ export function EventModal({ event, isOpen, onClose, onAuthPrompt }: EventModalP
                       <div className="flex flex-wrap gap-2">
                         {event.tags.map((tag, index) => (
                           <motion.div
-                            key={tag.tag}
+                            key={`${event.id}-modal-tag-${index}-${tag.tag}`}
                             initial={{ opacity: 0, scale: 0.8 }}
                             animate={{ opacity: 1, scale: 1 }}
                             transition={{ delay: 0.5 + index * 0.05 }}
@@ -444,6 +490,15 @@ export function EventModal({ event, isOpen, onClose, onAuthPrompt }: EventModalP
           </DialogContent>
         </Dialog>
       )}
-    </AnimatePresence>
+      </AnimatePresence>
+
+      {/* Edit Event Modal */}
+      <EditEventModal
+        event={event}
+        isOpen={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        onEventUpdated={handleEventUpdated}
+      />
+    </>
   )
 }

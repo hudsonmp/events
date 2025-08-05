@@ -15,7 +15,7 @@ async function getInitialEvents(): Promise<Event[]> {
       *,
       categories:event_categories(category:categories(id, name)),
       tags:event_tags(tag),
-      profile:profiles(username, profile_pic_url, bio),
+      profile:profiles!events_profile_id_fkey(username, profile_pic_url, bio),
       school:schools(name, address),
       post:posts!post_id(
         post_images(file_path)
@@ -25,7 +25,7 @@ async function getInitialEvents(): Promise<Event[]> {
       )
     `)
     .eq("status", "active")
-    .order('created_at', { ascending: false })
+    .order('start_datetime', { ascending: true, nullsFirst: false })
     .limit(100)
 
   if (error) {
@@ -73,7 +73,7 @@ async function getCalendarEvents(): Promise<Event[]> {
       *,
       categories:event_categories(category:categories(id, name)),
       tags:event_tags(tag),
-      profile:profiles(username, profile_pic_url, bio),
+      profile:profiles!events_profile_id_fkey(username, profile_pic_url, bio),
       school:schools(name, address),
       post:posts!post_id(
         post_images(file_path)
@@ -111,7 +111,7 @@ export default async function FindEventsPage() {
       <div className="px-4 pt-6 pb-4 lg:px-6">
         <div className="max-w-screen-2xl mx-auto">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Find Events</h1>
-          <p className="text-gray-600">Discover upcoming events in San Diego</p>
+          <p className="text-gray-600">Discover upcoming events at Patrick Henry High School</p>
         </div>
       </div>
 

@@ -108,7 +108,7 @@ export function PopularTags({ onTagClick, selectedTag }: PopularTagsProps) {
           const isSelected = selectedTag === tagData.tag
           return (
             <button
-              key={tagData.tag}
+              key={`popular-tag-${index}-${tagData.tag}`}
               onClick={() => handleTagClick(tagData.tag)}
               className={`flex-shrink-0 px-3 py-1.5 rounded-full text-sm font-medium border transition-all hover:scale-105 ${
                 isSelected 

@@ -18,7 +18,7 @@ async function getUserEvents(userId: string): Promise<{ upcoming: Event[], past:
         *,
         categories:event_categories(category:categories(id, name)),
         tags:event_tags(tag),
-        profile:profiles(username, profile_pic_url, bio),
+        profile:profiles!events_profile_id_fkey(username, profile_pic_url, bio),
         school:schools(name, address),
         post:posts!post_id(
           post_images(file_path)
