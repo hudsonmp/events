@@ -1,11 +1,12 @@
 "use client"
 
 import type { Event } from "@/lib/types"
-import { Calendar, Clock, MapPin, Users, UserCheck, Loader2 } from "lucide-react"
+import { Calendar, Clock, MapPin, Users, UserCheck, Loader2, Edit } from "lucide-react"
 import Image from "next/image"
 import { useAuth } from "@/lib/contexts/auth-context"
 import { useState, useEffect } from "react"
 import { AuthModal } from "@/components/auth-modal"
+import { EditEventModal } from "@/components/edit-event-modal"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -25,6 +26,7 @@ const getStorageUrl = (bucket: string, path: string) =>
 export function EventCard({ event, onClick }: EventCardProps) {
   const { user } = useAuth()
   const [showAuthModal, setShowAuthModal] = useState(false)
+  const [showEditModal, setShowEditModal] = useState(false)
   const [isRSVPed, setIsRSVPed] = useState(false)
   const [rsvpLoading, setRsvpLoading] = useState(false)
   const [checkingRsvp, setCheckingRsvp] = useState(false)
@@ -152,6 +154,29 @@ export function EventCard({ event, onClick }: EventCardProps) {
     }
   }
 
+  const canEdit = (event: Event): boolean => {
+    if (!user) return false
+    
+    // User can edit their own events
+    if (event.profile_id === user.id) return true
+    
+    // User can edit Instagram-imported events (those with post_id)
+    if (event.post_id) return true
+    
+    return false
+  }
+
+  const handleEdit = (e: React.MouseEvent) => {
+    e.stopPropagation() // Prevent card click
+    setShowEditModal(true)
+  }
+
+  const handleEventUpdated = (updatedEvent: Event) => {
+    // You could emit an event or refresh the parent component here
+    // For now, we'll just close the modal and let the parent handle refresh if needed
+    toast.success("Event updated successfully!")
+  }
+
   return (
     <motion.div
       variants={cardHoverVariants}
@@ -220,6 +245,31 @@ export function EventCard({ event, onClick }: EventCardProps) {
                 <Badge className="bg-white/90 text-slate-800 backdrop-blur-sm">
                   {event.categories[0].category.name}
                 </Badge>
+              </motion.div>
+            )}
+
+            {/* Edit Button */}
+            {canEdit(event) && (
+              <motion.div 
+                className="absolute top-3 right-3"
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.25 }}
+              >
+                <motion.div
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                >
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="h-8 w-8 p-0 bg-white/90 hover:bg-white text-slate-600 hover:text-slate-800 backdrop-blur-sm shadow-md"
+                    onClick={handleEdit}
+                    title="Edit event"
+                  >
+                    <Edit className="h-3.5 w-3.5" />
+                  </Button>
+                </motion.div>
               </motion.div>
             )}
             
@@ -340,7 +390,7 @@ export function EventCard({ event, onClick }: EventCardProps) {
                   >
                     {event.tags.slice(0, 3).map((tag, index) => (
                       <motion.div
-                        key={tag.tag}
+                        key={`${event.id}-tag-${index}-${tag.tag}`}
                         initial={{ opacity: 0, scale: 0.8 }}
                         animate={{ opacity: 1, scale: 1 }}
                         transition={{ delay: 0.3 + index * 0.05 }}
@@ -352,6 +402,7 @@ export function EventCard({ event, onClick }: EventCardProps) {
                     ))}
                     {event.tags.length > 3 && (
                       <motion.div
+                        key={`${event.id}-more-tags`}
                         initial={{ opacity: 0, scale: 0.8 }}
                         animate={{ opacity: 1, scale: 1 }}
                         transition={{ delay: 0.45 }}
@@ -381,9 +432,14 @@ export function EventCard({ event, onClick }: EventCardProps) {
                         sizes="24px"
                       />
                     </div>
-                    <span className="text-xs text-slate-500">
-                      by {event.profile.username}
-                    </span>
+                    <div className="flex-1 text-xs text-slate-500">
+                      <span>by {event.profile.username}</span>
+                      {event.modified_by && (
+                        <div className="text-xs text-blue-600 mt-0.5">
+                          Modified by user
+                        </div>
+                      )}
+                    </div>
                   </motion.div>
                 )}
               </div>
@@ -391,6 +447,21 @@ export function EventCard({ event, onClick }: EventCardProps) {
           </CardContent>
         </div>
       </Card>
+
+      {/* Edit Event Modal */}
+      <EditEventModal
+        event={event}
+        isOpen={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        onEventUpdated={handleEventUpdated}
+      />
+
+      {/* Auth Modal */}
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        defaultTab="signin"
+      />
     </motion.div>
   )
 }

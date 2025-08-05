@@ -10,9 +10,21 @@ export type Event = {
   type: "in-person" | "virtual" | "hybrid"
   url: string | null
   status: "active" | "draft"
+  post_id: string | null // For tracking Instagram-imported events
+  caption_id: string | null // For tracking Instagram-imported events
+  profile_id: string | null // Original creator
+  modified_by: string | null // User who last modified the event
+  modified_at: string | null // When the event was last modified
+  created_at: string
+  updated_at: string
   categories: { category: { id: string; name: string } }[]
   tags: { tag: string }[]
   profile: {
+    username: string
+    profile_pic_url: string | null
+    bio: string | null
+  } | null
+  modifier_profile?: {
     username: string
     profile_pic_url: string | null
     bio: string | null
