@@ -1,12 +1,14 @@
-import { redirect } from "next/navigation"
-import { createServerClient } from "@/lib/supabase/server"
+"use client"
+
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
+import { useAuth } from "@/lib/contexts/auth-context"
+import { createClient } from "@/lib/supabase/client"
 import { UserEventsClient } from "@/components/user-events-client"
 import type { Event } from "@/lib/types"
 
-export const revalidate = 60 // Revalidate every 60 seconds
-
 async function getUserEvents(userId: string): Promise<{ upcoming: Event[], past: Event[] }> {
-  const supabase = await createServerClient()
+  const supabase = createClient()
   const now = new Date().toISOString()
 
   // Get all events the user is attending
@@ -54,15 +56,39 @@ async function getUserEvents(userId: string): Promise<{ upcoming: Event[], past:
   return { upcoming, past }
 }
 
-export default async function MyEventsPage() {
-  const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+export default function MyEventsPage() {
+  const { user, loading } = useAuth()
+  const router = useRouter()
+  const [userEvents, setUserEvents] = useState<{ upcoming: Event[], past: Event[] }>({ upcoming: [], past: [] })
+  const [isLoadingEvents, setIsLoadingEvents] = useState(true)
 
-  if (!user) {
-    redirect("/")
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push("/")
+      return
+    }
+
+    if (user) {
+      getUserEvents(user.id).then((events) => {
+        setUserEvents(events)
+        setIsLoadingEvents(false)
+      })
+    }
+  }, [user, loading, router])
+
+  // Show loading state while checking auth
+  if (loading || !user) {
+    return (
+      <section className="w-full">
+        <div className="container max-w-screen-2xl mx-auto p-4">
+          <div className="mb-6">
+            <h1 className="text-3xl font-bold text-slate-800 mb-2">My Events</h1>
+            <p className="text-slate-600">Loading...</p>
+          </div>
+        </div>
+      </section>
+    )
   }
-
-  const { upcoming, past } = await getUserEvents(user.id)
 
   return (
     <section className="w-full">
@@ -71,7 +97,11 @@ export default async function MyEventsPage() {
           <h1 className="text-3xl font-bold text-slate-800 mb-2">My Events</h1>
           <p className="text-slate-600">Events you've RSVP'd to</p>
         </div>
-        <UserEventsClient initialUpcoming={upcoming} initialPast={past} />
+        {isLoadingEvents ? (
+          <p className="text-slate-600">Loading your events...</p>
+        ) : (
+          <UserEventsClient initialUpcoming={userEvents.upcoming} initialPast={userEvents.past} />
+        )}
       </div>
     </section>
   )

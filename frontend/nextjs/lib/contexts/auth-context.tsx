@@ -49,18 +49,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const signInWithGoogle = async () => {
-    // Get the correct redirect URL based on environment
+    // Build the redirect URL dynamically so that it works across
+    // desktop and mobile browsers, in both development and production.
+    // We avoid environment-specific branching based on NODE_ENV because
+    // some mobile browsers (e.g. iOS standalone/PWA) can still return
+    // unexpected hostnames. Instead we rely on the actual origin that
+    // the user is visiting.
     const getRedirectUrl = () => {
-      // In development, use localhost
-      if (typeof window !== 'undefined') {
-        const { hostname } = window.location
-        if (hostname === 'localhost' || hostname === '127.0.0.1') {
-          return 'http://localhost:3000/auth/callback'
-        }
+      // Client-side: always trust window.location.origin. This guarantees
+      // that whatever hostname the user is on (localhost, 127.0.0.1,
+      // henryai.org, custom domains, etc.) is used for the callback.
+      if (typeof window !== "undefined") {
+        return `${window.location.origin}/auth/callback`
       }
-      
-      // In production, always use the hardcoded production domain
-      return 'https://henryai.org/auth/callback'
+
+      // Server-side fallback (should rarely be hit because this function
+      // is invoked from client interactions). We prefer an explicit env
+      // var but fall back to localhost so that `next dev` still works.
+      const base =
+        process.env.NEXT_PUBLIC_SITE_URL ||
+        (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
+
+      return `${base}/auth/callback`
     }
 
     const { error } = await supabase.auth.signInWithOAuth({
