@@ -95,9 +95,6 @@ jobs:
       run: |
         cd instagram/extraction
         
-        # Create logs directory
-        mkdir -p logs
-        
         # Determine batch size
         BATCH_SIZE=""
         if [ -n "${{ github.event.inputs.batch_size }}" ]; then
@@ -106,40 +103,16 @@ jobs:
           BATCH_SIZE="${{ github.event.client_payload.batch_size }}"
         fi
         
-        # Run extraction with logging
+        # Run extraction (GitHub Actions will capture all output automatically)
         echo "🚀 Starting AI event extraction..."
         if [ -n "$BATCH_SIZE" ]; then
           echo "📊 Processing batch size: $BATCH_SIZE"
-          python ai.py $BATCH_SIZE 2>&1 | tee logs/extraction-$(date +%Y%m%d-%H%M%S).log
+          python ai.py $BATCH_SIZE
         else
           echo "📊 Processing all unprocessed posts"
-          python ai.py 2>&1 | tee logs/extraction-$(date +%Y%m%d-%H%M%S).log
+          python ai.py
         fi
         
-        # Check if extraction was successful
-        EXTRACTION_EXIT_CODE=${PIPESTATUS[0]}
-        if [ $EXTRACTION_EXIT_CODE -eq 0 ]; then
-          echo "✅ Extraction completed successfully"
-        else
-          echo "❌ Extraction failed with exit code $EXTRACTION_EXIT_CODE"
-          echo "📄 Log files created in logs/ directory:"
-          ls -la logs/ || echo "No logs directory found"
-          echo "🔍 Checking for any error patterns in output..."
-          # Show last 20 lines of the most recent log file (handles multiple matches safely)
-          latest_log=$(ls -t logs/extraction-*.log 2>/dev/null | head -n 1 || true)
-          if [ -n "$latest_log" ]; then
-            echo "Last 20 lines of $latest_log:"
-            tail -n 20 "$latest_log" || echo "Could not read log file"
-          fi
-          exit $EXTRACTION_EXIT_CODE
-        fi
+        echo "✅ Extraction completed successfully"
     
-    - name: Upload extraction logs
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: extraction-logs-${{ github.run_number }}
-        path: |
-          instagram/extraction/logs/*.log
-        if-no-files-found: warn
-        retention-days: 7 
+ 
