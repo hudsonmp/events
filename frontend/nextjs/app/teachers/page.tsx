@@ -16,6 +16,7 @@ import MeetingNudge from "@/components/meeting-nudge"
 import ResourceContainer from "@/components/resource-container"
 import { analytics } from "@/lib/analytics"
 import { ChevronRight, ChevronLeft } from "lucide-react"
+import GeneratedContentCard from "@/components/generated-content-card"
 
 interface Message {
   id: string
@@ -23,7 +24,7 @@ interface Message {
   sender: "ai" | "user"
   timestamp: Date
   type?: "text" | "bubbles" | "input-embedded" | "structured" | "embedded-input" | "final-plan" | "multi-question" | 
-         "problem_discovery" | "deep_dive" | "plan_creation" | "meeting_nudge" | "meeting_qa" | "final_resource"
+         "problem_discovery" | "deep_dive" | "plan_creation" | "meeting_nudge" | "meeting_qa" | "final_resource" | "generated_content"
   bubbles?: string[]
   inputPrompt?: string
   inputValue?: string
@@ -68,6 +69,12 @@ interface Message {
     footer_note: string
   }
   resourceType?: string
+  // New fields for generated content
+  generated_content?: {
+    title: string
+    content: string
+    content_type: string
+  }
 }
 
 interface UserData {
@@ -476,7 +483,10 @@ The user is a ${bubble} named ${userName}. This is your first response after the
             })
           })
           
-          if (!response.ok) throw new Error('Failed to get AI response')
+          if (!response.ok) {
+            console.error('API response not ok:', response.status, response.statusText)
+            throw new Error(`API request failed: ${response.status} ${response.statusText}`)
+          }
           const result = await response.json()
           
           // Add thank you message first
@@ -493,25 +503,25 @@ The user is a ${bubble} named ${userName}. This is your first response after the
           setTimeout(() => {
             const groqResponse: Message = {
               id: Date.now().toString(),
-              content: result.content,
+              content: result.content || result.message,
               sender: "ai",
               timestamp: new Date(),
               type: "text"
             }
             setMessages(prev => [...prev, groqResponse])
             
-            // After another delay, ask about pain points
+            // After another delay, enable chat
             setTimeout(() => {
-              const painPointMessage: Message = {
-                id: `pain-${Date.now()}`,
-                content: "is there anything you're dreading or that's a pain in the a**?",
+              const chatMessage: Message = {
+                id: `chat-${Date.now()}`,
+                content: "What would you like help with today? Just type your message below! 💬",
                 sender: "ai",
                 timestamp: new Date(),
-                type: "bubbles",
-                bubbles: ["Yes!", "Not really"]
+                type: "text"
               }
-              setMessages(prev => [...prev, painPointMessage])
+              setMessages(prev => [...prev, chatMessage])
               setCurrentStep(3)
+              setConversationStep(3)
               setProgressStep(3)
               setHasUserSentMessage(true)
             }, 1000)
@@ -532,15 +542,14 @@ The user is a ${bubble} named ${userName}. This is your first response after the
           setMessages(prev => [...prev, thankYouMessage])
           
           setTimeout(() => {
-            const painPointMessage: Message = {
-              id: `pain-${Date.now()}`,
-              content: "anything you dread doing or is a pain in the a**?",
+            const chatMessage: Message = {
+              id: `chat-${Date.now()}`,
+              content: "What would you like help with today? Just type your message below! 💬",
               sender: "ai",
               timestamp: new Date(),
-              type: "bubbles",
-              bubbles: ["Yes!", "Not really"]
+              type: "text"
             }
-            setMessages(prev => [...prev, painPointMessage])
+            setMessages(prev => [...prev, chatMessage])
             setCurrentStep(3)
             setProgressStep(3)
             setHasUserSentMessage(true)
@@ -615,7 +624,10 @@ The user is a ${bubble} named ${userName}. This is your first response after the
           })
         })
 
-        if (!response.ok) throw new Error('Failed to get AI response')
+        if (!response.ok) {
+          console.error('API response not ok:', response.status, response.statusText)
+          throw new Error(`API request failed: ${response.status} ${response.statusText}`)
+        }
         const result = await response.json()
 
         // Add "i have a few questions" message
@@ -730,7 +742,10 @@ The user is a ${value} named ${userName}. This is your first response after they
             })
           })
           
-          if (!response.ok) throw new Error('Failed to get AI response')
+          if (!response.ok) {
+            console.error('API response not ok:', response.status, response.statusText)
+            throw new Error(`API request failed: ${response.status} ${response.statusText}`)
+          }
           const result = await response.json()
           
           // Add thank you message first
@@ -747,25 +762,25 @@ The user is a ${value} named ${userName}. This is your first response after they
           setTimeout(() => {
             const groqResponse: Message = {
               id: Date.now().toString(),
-              content: result.content,
+              content: result.content || result.message,
               sender: "ai",
               timestamp: new Date(),
               type: "text"
             }
             setMessages(prev => [...prev, groqResponse])
             
-            // After another delay, ask about pain points
+            // After another delay, enable chat
             setTimeout(() => {
-              const painPointMessage: Message = {
-                id: `pain-${Date.now()}`,
-                content: "is there anything you're dreading or that's a pain in the a**?",
+              const chatMessage: Message = {
+                id: `chat-${Date.now()}`,
+                content: "What would you like help with today? Just type your message below! 💬",
                 sender: "ai",
                 timestamp: new Date(),
-                type: "bubbles",
-                bubbles: ["Yes!", "Not really"]
+                type: "text"
               }
-              setMessages(prev => [...prev, painPointMessage])
+              setMessages(prev => [...prev, chatMessage])
               setCurrentStep(3)
+              setConversationStep(3)
               setProgressStep(3)
               setHasUserSentMessage(true)
             }, 1000)
@@ -786,15 +801,14 @@ The user is a ${value} named ${userName}. This is your first response after they
           setMessages(prev => [...prev, thankYouMessage])
           
           setTimeout(() => {
-            const painPointMessage: Message = {
-              id: `pain-${Date.now()}`,
-              content: "anything you dread doing or is a pain in the a**?",
+            const chatMessage: Message = {
+              id: `chat-${Date.now()}`,
+              content: "What would you like help with today? Just type your message below! 💬",
               sender: "ai",
               timestamp: new Date(),
-              type: "bubbles",
-              bubbles: ["Yes!", "Not really"]
+              type: "text"
             }
-            setMessages(prev => [...prev, painPointMessage])
+            setMessages(prev => [...prev, chatMessage])
             setCurrentStep(3)
             setProgressStep(3)
             setHasUserSentMessage(true)
@@ -885,7 +899,10 @@ The user is a ${value} named ${userName}. This is your first response after they
             })
           })
           
-          if (!response.ok) throw new Error('Failed to get AI response')
+          if (!response.ok) {
+            console.error('API response not ok:', response.status, response.statusText)
+            throw new Error(`API request failed: ${response.status} ${response.statusText}`)
+          }
           const result = await response.json()
           
           // Add thank you message first
@@ -902,7 +919,7 @@ The user is a ${value} named ${userName}. This is your first response after they
           setTimeout(() => {
             const groqResponse: Message = {
               id: Date.now().toString(),
-              content: result.content,
+              content: result.content || result.message,
               sender: "ai",
               timestamp: new Date(),
               type: "text"
@@ -930,7 +947,7 @@ The user is a ${value} named ${userName}. This is your first response after they
           setTimeout(() => {
             const painPointMessage: Message = {
               id: `pain-${Date.now()}`,
-              content: "anything you dread doing or is a pain in the a**?",
+              content: "is there anything you don't enjoy doing?",
               sender: "ai",
               timestamp: new Date(),
               type: "bubbles",
@@ -963,7 +980,10 @@ The user is a ${value} named ${userName}. This is your first response after they
         })
       })
       
-      if (!response.ok) throw new Error('Failed to get AI response')
+      if (!response.ok) {
+        console.error('API response not ok:', response.status, response.statusText)
+        throw new Error(`API request failed: ${response.status} ${response.statusText}`)
+      }
       
       const result = await response.json()
       
@@ -1036,7 +1056,10 @@ The user is a ${value} named ${userName}. This is your first response after they
         })
       })
       
-      if (!response.ok) throw new Error('Failed to get AI response')
+      if (!response.ok) {
+        console.error('API response not ok:', response.status, response.statusText)
+        throw new Error(`API request failed: ${response.status} ${response.statusText}`)
+      }
       
       const result = await response.json()
       
@@ -1054,7 +1077,8 @@ The user is a ${value} named ${userName}. This is your first response after they
           cal_link: result.cal_link,
           meeting_hint: result.meeting_hint,
           resource: result.resource,
-          resourceType: result.resourceType || result.plan?.resource_type
+          resourceType: result.resourceType || result.plan?.resource_type,
+          generated_content: result.generated_content
         }
         
         setMessages(prev => [...prev, aiResponse])
@@ -1329,12 +1353,15 @@ The user is a ${value} named ${userName}. This is your first response after they
                           })
                         })
                         
-                        if (!response.ok) throw new Error('Failed to get AI response')
+                        if (!response.ok) {
+                          console.error('API response not ok:', response.status, response.statusText)
+                          throw new Error(`API request failed: ${response.status} ${response.statusText}`)
+                        }
                         const result = await response.json()
                         
                         let followupData
                         try {
-                          followupData = JSON.parse(result.content)
+                          followupData = JSON.parse(result.content || result.message)
                         } catch {
                           followupData = { needs_more: false }
                         }
@@ -1562,6 +1589,20 @@ The user is a ${value} named ${userName}. This is your first response after they
                   footerNote={message.resource.footer_note}
                   resourceType={currentResourceType as any}
                 />
+              ) : message.type === 'generated_content' && message.generated_content ? (
+                <div className="space-y-3">
+                  <div className="whitespace-pre-wrap text-gray-800">{message.content}</div>
+                  <GeneratedContentCard
+                    title={message.generated_content.title}
+                    content={message.generated_content.content}
+                    type={message.generated_content.content_type as any}
+                  />
+                  {message.cal_link && (
+                    <div className="text-sm text-gray-600 bg-blue-50 border border-blue-200 rounded-lg p-3">
+                      📅 Need more help? <a href={message.cal_link} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline">Book a meeting with Hudson</a>
+                    </div>
+                  )}
+                </div>
               ) : (
               <div className={`rounded-2xl px-4 py-3 ${(message.type === 'embedded-input' || message.type === 'input-embedded') ? 'max-w-[95%]' : 'max-w-[80%]'} shadow-sm backdrop-blur-sm transform hover:scale-[1.01] hover:shadow-md transition-all duration-200 ease-out ${
                 message.sender === 'user' 
@@ -1584,7 +1625,14 @@ The user is a ${value} named ${userName}. This is your first response after they
                     </div>
                   </div>
                 ) : (
-                  <div className="whitespace-pre-wrap">{message.content}</div>
+                  <div>
+                    <div className="whitespace-pre-wrap">{message.content}</div>
+                    {message.cal_link && message.sender === 'ai' && (
+                      <div className="mt-3 text-sm text-gray-600 bg-blue-50 border border-blue-200 rounded-lg p-3">
+                        📅 Need more help? <a href={message.cal_link} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline">Book a meeting with Hudson</a>
+                      </div>
+                    )}
+                  </div>
                 )}
                 
                 {/* Bubbles */}
@@ -1702,7 +1750,7 @@ The user is a ${value} named ${userName}. This is your first response after they
           </div>
         )}
 
-        {false && (/* Input Area - Always at bottom */
+        {hasUserSentMessage && (/* Input Area - Always at bottom */
         <div className="p-4 w-full">
           <div 
             className={`flex items-center space-x-3 w-full max-w-4xl mx-auto transition-all duration-1000 ${

@@ -347,7 +347,8 @@ export default function ScheduleDisplay({ schedule, student, onSave, uploadedIma
               </CardContent>
             </Card>
           </motion.div>
-        ))}
+          ))
+        )}
       </div>
 
       {/* Export Actions */}
@@ -487,7 +488,8 @@ export default function ScheduleDisplay({ schedule, student, onSave, uploadedIma
                             )}
                           </div>
                         </div>
-                    ))}
+                      ))
+                    )}
                   </div>
                 </div>
 

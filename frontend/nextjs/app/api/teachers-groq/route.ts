@@ -89,6 +89,7 @@ interface StructuredResponse {
 export async function POST(request: NextRequest) {
   try {
     const body: TeachersRequest = await request.json()
+    console.log('Teachers Groq API request body:', JSON.stringify(body, null, 2))
     
     // Step 1: Warm Welcome & Icebreaker
     if (body.systemPrompt && body.systemPrompt.includes("This is your first response")) {
@@ -117,8 +118,41 @@ Return as plain text message, NOT JSON.`
         ],
         model: "openai/gpt-oss-120b",
         temperature: 0.7,
-        max_tokens: 200,
-        reasoning_effort: "none"
+        max_tokens: 200
+      })
+
+      const response = completion.choices[0]?.message?.content
+      
+      if (!response) {
+        throw new Error("No response from AI service")
+      }
+
+      const responseData = {
+        type: "text",
+        message: response.trim(),
+        content: response.trim(),
+        step: 1
+      }
+      console.log('Returning response:', JSON.stringify(responseData, null, 2))
+      return NextResponse.json(responseData)
+    }
+
+    // Handle legacy/simple message requests with messages array
+    if (body.messages && !body.systemPrompt && !body.message) {
+      const completion = await groq.chat.completions.create({
+        messages: [
+          {
+            role: "system",
+            content: "You are Henry, a friendly AI bot for teachers. Respond with warmth and empathy."
+          },
+          ...body.messages.map(msg => ({
+            role: msg.role as "user" | "assistant" | "system",
+            content: msg.content
+          })),
+        ],
+        model: "openai/gpt-oss-120b",
+        temperature: 0.7,
+        max_tokens: 400
       })
 
       const response = completion.choices[0]?.message?.content
@@ -129,8 +163,8 @@ Return as plain text message, NOT JSON.`
 
       return NextResponse.json({
         type: "text",
-        message: response.trim(),
-        step: 1
+        content: response.trim(),
+        message: response.trim()
       })
     }
 
@@ -140,6 +174,10 @@ Return as plain text message, NOT JSON.`
       const recentContext = contextMessages.map(msg => `${msg.sender}: ${msg.content}`).join('\n')
       const message = body.message.toLowerCase()
       const currentStep = body.currentStep || 2
+      
+      console.log('Processing message:', body.message)
+      console.log('Current step:', currentStep)
+      console.log('User data:', body.userData)
 
       // Step 2: Conversational Problem Discovery
       if (currentStep === 2) {
@@ -177,8 +215,7 @@ Return ONLY this JSON structure:
           ],
           model: "openai/gpt-oss-120b",
           temperature: 0.7,
-          max_tokens: 1000,
-          reasoning_effort: "none"
+                    max_tokens: 1000
         })
 
         const response = completion.choices[0]?.message?.content
@@ -200,8 +237,122 @@ Return ONLY this JSON structure:
         }
       }
 
-      // Step 3: Deep Dive on Selected Area
+      // Step 3: General Conversation or Deep Dive on Selected Area
       if (currentStep === 3) {
+        // Check if this is a general conversation (no specific challenge selected)
+        if (!body.selectedChallenge && body.conversationGoal !== 'deep_dive') {
+          const contextLength = recentContext.split('\n').length
+          
+          // Check if user is asking for something to be created directly
+          const createKeywords = ['create', 'make', 'generate', 'build', 'write', 'plan', 'design', 'help me with']
+          const contentKeywords = ['lesson', 'quiz', 'test', 'rubric', 'assignment', 'activity', 'worksheet', 'email', 'letter']
+          const isDirectRequest = createKeywords.some(keyword => message.includes(keyword)) && 
+                                 contentKeywords.some(keyword => message.includes(keyword))
+          
+          let prompt = ''
+          
+          if (isDirectRequest) {
+            // Directly create the requested content
+            prompt = `You are Henry, a helpful AI assistant for ${body.userData.name || 'a teacher'} (${body.userData.role || 'teacher'}). 
+
+They requested: "${body.message}"
+
+Create what they asked for immediately. Be specific and practical. If it's a lesson plan, include objectives, materials, steps, and timing. If it's a quiz, include questions and answers. If it's a rubric, include criteria and performance levels. Make it ready to use.
+
+Return ONLY this JSON structure:
+{
+  "type": "generated_content",
+  "message": "Here's what you requested:",
+  "generated_content": {
+    "title": "Your [Lesson Plan/Quiz/Rubric/etc.]",
+    "content": "[The complete, detailed content]",
+    "content_type": "lesson_plan"
+  },
+  "cal_link": "https://cal.com/hudsonmp/henry-ai-club",
+  "step": 3
+}`
+          } else if (contextLength >= 6) {
+            // If we've had several exchanges, start generating content instead of just asking questions
+            prompt = `You are Henry, a helpful AI assistant for ${body.userData.name || 'a teacher'} (${body.userData.role || 'teacher'}). 
+
+Based on our conversation: ${recentContext}
+
+They just said: "${body.message}"
+
+Instead of asking more questions, provide a helpful, actionable response. If they mentioned any teaching challenge, offer specific solutions, resources, or tools. If they need something created, create it immediately and return it as generated content.
+
+If creating content, return this structure:
+{
+  "type": "generated_content",
+  "message": "Here's what I created for you:",
+  "generated_content": {
+    "title": "Helpful [Resource/Template/etc.]",
+    "content": "[The complete content]",
+    "content_type": "general"
+  },
+  "cal_link": "https://cal.com/hudsonmp/henry-ai-club",
+  "step": 3
+}
+
+If just providing advice, return:
+{
+  "type": "text",
+  "message": "Your helpful, actionable response with specific solutions",
+  "cal_link": "https://cal.com/hudsonmp/henry-ai-club",
+  "step": 3
+}`
+          } else {
+            prompt = `You are Henry, a friendly AI bot helping ${body.userData.name || 'a teacher'} (${body.userData.role || 'teacher'}). 
+
+They just said: "${body.message}"
+
+Ask 1-2 specific questions to understand what they need help with, then offer to create something concrete (lesson plan, rubric, quiz, etc.). Be conversational but goal-oriented. Don't just chat - aim to help them create something useful.
+
+Return ONLY this JSON structure:
+{
+  "type": "text",
+  "message": "Your helpful response with specific questions and offers to create content",
+  "cal_link": "https://cal.com/hudsonmp/henry-ai-club",
+  "step": 3
+}`
+          }
+
+          const completion = await groq.chat.completions.create({
+            messages: [
+              {
+                role: "system",
+                content: "You are Henry, a friendly AI bot for teachers. Respond conversationally and helpfully to whatever they share."
+              },
+              {
+                role: "user",
+                content: prompt,
+              },
+            ],
+            model: "openai/gpt-oss-120b",
+            temperature: 0.7,
+            max_tokens: 400
+          })
+
+          const response = completion.choices[0]?.message?.content
+          
+          if (!response) {
+            throw new Error("No response from AI service")
+          }
+
+          try {
+            const parsedResponse = JSON.parse(response.trim())
+            return NextResponse.json(parsedResponse)
+          } catch (parseError) {
+            console.error("Failed to parse JSON response:", parseError)
+            return NextResponse.json({
+              type: "text",
+              message: response.trim(),
+              step: 3
+            })
+          }
+        }
+
+        // Original deep dive logic for when a challenge is selected
         const prompt = `You are Henry helping ${body.userData.name}. They selected: "${body.message}"
 
 STEP 3 - DEEP DIVE: Ask 2-3 targeted questions about their selected challenge area:
@@ -236,8 +387,7 @@ Return ONLY this JSON structure:
           ],
           model: "openai/gpt-oss-120b",
           temperature: 0.7,
-          max_tokens: 800,
-          reasoning_effort: "none"
+                    max_tokens: 800
         })
 
         const response = completion.choices[0]?.message?.content
@@ -299,8 +449,7 @@ Return ONLY this JSON structure:
           ],
           model: "openai/gpt-oss-120b",
           temperature: 0.7,
-          max_tokens: 1200,
-          reasoning_effort: "none"
+                    max_tokens: 1200
         })
 
         const response = completion.choices[0]?.message?.content
@@ -362,8 +511,7 @@ Return ONLY this JSON structure:
           ],
           model: "openai/gpt-oss-120b",
           temperature: 0.7,
-          max_tokens: 400,
-          reasoning_effort: "none"
+                    max_tokens: 400
         })
 
         const response = completion.choices[0]?.message?.content
@@ -437,8 +585,7 @@ Return ONLY valid JSON:
           ],
           model: "openai/gpt-oss-120b",
           temperature: 0.7,
-          max_tokens: 2000,
-          reasoning_effort: "none"
+                    max_tokens: 2000
         })
 
         const response = completion.choices[0]?.message?.content
@@ -465,6 +612,24 @@ Return ONLY valid JSON:
         type: "text",
         message: "I'm here to help! Could you tell me more about what you're looking for?",
         step: currentStep || 2
+      })
+    }
+
+    // Handle requests with name/userRole but no message (questionnaire responses)
+    if (body.name && body.userRole && !body.message) {
+      return NextResponse.json({
+        type: "text",
+        content: "Thank you for the information! How can I help you today?",
+        message: "Thank you for the information! How can I help you today?"
+      })
+    }
+
+    // Handle any other request with basic response
+    if (body.messages || body.name || body.userRole) {
+      return NextResponse.json({
+        type: "text",
+        content: "I'm here to help! Could you tell me more about what you need?",
+        message: "I'm here to help! Could you tell me more about what you need?"
       })
     }
 

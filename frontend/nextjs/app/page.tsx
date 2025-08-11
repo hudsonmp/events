@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useEffect, useState } from "react"
 import { CardDescription, CardTitle } from "@/components/ui/card"
-import { Calendar, Users, GraduationCap, Wand2 } from "lucide-react"
+import { Calendar, Users, GraduationCap, Wand2, AlertTriangle } from "lucide-react"
 import { SafeMotionDiv } from "@/lib/motion-safe"
 
 export default function HomePage() {
@@ -61,7 +61,20 @@ export default function HomePage() {
         <div className="absolute inset-0 bg-gradient-to-br from-emerald-50 via-white to-amber-50" />
       </div>
 
-      <div className="relative mx-auto max-w-6xl px-4 py-20 md:py-28">
+      {/* Warning Banner */}
+      <div className="relative mx-auto max-w-6xl px-4 pt-6">
+        <SafeMotionDiv
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="flex items-center justify-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-4 py-2 text-sm text-amber-800"
+        >
+          <AlertTriangle className="h-4 w-4" />
+          <span>In progress – expect some bugs! 🚧</span>
+        </SafeMotionDiv>
+      </div>
+
+      <div className="relative mx-auto max-w-6xl px-4 py-12 md:py-20">
         {/* Hero */}
         <SafeMotionDiv
           initial={{ opacity: 0, y: 16 }}
@@ -82,14 +95,15 @@ export default function HomePage() {
         {/* Tools Grid */}
         <div className="mt-10 grid grid-cols-1 gap-5 md:mt-14 md:grid-cols-2">
           {cards.map(({ href, title, description, icon: Icon, color }, idx) => (
-            <Link key={title} href={href} className="group">
+            <Link key={title} href={href} className="group block">
               <SafeMotionDiv
                 initial={{ opacity: 0, y: 24 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, delay: 0.1 * idx }}
                 whileHover={{ y: -6, scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                className={`relative overflow-hidden rounded-2xl border bg-white/70 p-6 shadow-sm backdrop-blur-md transition-all duration-300 hover:shadow-xl`}
+                className={`relative overflow-hidden rounded-2xl border bg-white/70 p-6 shadow-sm backdrop-blur-md transition-all duration-300 hover:shadow-xl cursor-pointer`}
+                style={{ pointerEvents: 'auto' }}
               >
                 <div className={`absolute inset-0 bg-gradient-to-br ${color} opacity-0 transition-opacity duration-300 group-hover:opacity-100`} />
                 <div className="relative flex items-start gap-4">

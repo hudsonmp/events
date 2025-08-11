@@ -16,6 +16,11 @@ const EXTENSION_FILES = [
 
 // Function to check if a URL is an extension URL
 export const isExtensionUrl = (url: string): boolean => {
+  // Only block actual extension URLs, not relative API paths
+  if (url.startsWith('/') || url.startsWith('./') || url.startsWith('../')) {
+    return false // These are legitimate relative URLs
+  }
+  
   return url.startsWith('chrome-extension://') || 
          url.startsWith('moz-extension://') || 
          url.startsWith('safari-extension://') ||
