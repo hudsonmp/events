@@ -95,3 +95,4 @@ env_template.txt
 # Temporary files
 *.tmp
 *.temp
+prompts.md

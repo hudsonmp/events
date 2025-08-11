@@ -685,7 +685,7 @@ ONLY extract events from posts that are **ANNOUNCEMENTS** of future activities, 
                 }
             ]
             
-            model = "meta-llama/llama-4-scout-17b-16e-instruct"  # Reverted to preferred model
+            model = "meta-llama/Llama-4-Maverick-17B-128E-Instruct"
             
             # Make request using the rate-limited wrapper (automatically handles rate limiting and retries)
             response = self.groq.chat.completions.create(

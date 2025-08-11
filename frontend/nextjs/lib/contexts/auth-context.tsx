@@ -51,24 +51,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signInWithGoogle = async () => {
     // Build the redirect URL dynamically so that it works across
     // desktop and mobile browsers, in both development and production.
-    // We avoid environment-specific branching based on NODE_ENV because
-    // some mobile browsers (e.g. iOS standalone/PWA) can still return
-    // unexpected hostnames. Instead we rely on the actual origin that
-    // the user is visiting.
-    // Mobile browsers sometimes mis-handle `window.location` during the OAuth
-    // round-trip (especially iOS in-app WebViews). To keep the flow reliable we
-    // generate the callback URL at runtime, defaulting to the production
-    // domain if `window.location` is not available (e.g. during SSR).
+    // We prioritize the current window location for accuracy, then fall back
+    // to environment-specific configuration.
     const getRedirectUrl = () => {
+      // First priority: Use the actual origin the user is visiting
       if (typeof window !== "undefined") {
-        // Use whatever origin the user is currently on (works for localhost and prod)
-        return `${window.location.origin}/auth/callback`
+        const origin = window.location.origin
+        console.log(`🔐 Auth redirect using window.location.origin: ${origin}/auth/callback`)
+        return `${origin}/auth/callback`
       }
-      // Fallback to an environment variable or final hard-coded prod URL for server contexts
+      
+      // Second priority: Check if we're in development mode
+      if (process.env.NODE_ENV === "development") {
+        const devUrl = "http://localhost:3000/auth/callback"
+        console.log(`🔐 Auth redirect using development fallback: ${devUrl}`)
+        return devUrl
+      }
+      
+      // Third priority: Use environment variable
       if (process.env.NEXT_PUBLIC_SITE_URL) {
-        return `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`
+        const envUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`
+        console.log(`🔐 Auth redirect using NEXT_PUBLIC_SITE_URL: ${envUrl}`)
+        return envUrl
       }
-      return "https://henryai.org/auth/callback"
+      
+      // Final fallback: Production URL
+      const prodUrl = "https://henryai.org/auth/callback"
+      console.log(`🔐 Auth redirect using production fallback: ${prodUrl}`)
+      return prodUrl
     }
 
     const { error } = await supabase.auth.signInWithOAuth({

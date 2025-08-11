@@ -125,18 +125,21 @@ jobs:
           echo "📄 Log files created in logs/ directory:"
           ls -la logs/ || echo "No logs directory found"
           echo "🔍 Checking for any error patterns in output..."
-          if [ -f logs/extraction-*.log ]; then
-            echo "Last 20 lines of log file:"
-            tail -20 logs/extraction-*.log || echo "Could not read log file"
+          # Show last 20 lines of the most recent log file (handles multiple matches safely)
+          latest_log=$(ls -t logs/extraction-*.log 2>/dev/null | head -n 1 || true)
+          if [ -n "$latest_log" ]; then
+            echo "Last 20 lines of $latest_log:"
+            tail -n 20 "$latest_log" || echo "Could not read log file"
           fi
           exit $EXTRACTION_EXIT_CODE
         fi
     
     - name: Upload extraction logs
       if: always()
-      uses: actions/upload-artifact@v4fixed?
+      uses: actions/upload-artifact@v4
       with:
         name: extraction-logs-${{ github.run_number }}
         path: |
           instagram/extraction/logs/*.log
+        if-no-files-found: warn
         retention-days: 7 
