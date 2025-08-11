@@ -3,24 +3,30 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Copy, ExternalLink, ChevronDown, ChevronUp, Sparkles } from "lucide-react"
+import { Copy, ExternalLink, ChevronDown, ChevronUp, Sparkles, Calendar, Lock } from "lucide-react"
 import { toast } from "sonner"
+import FullscreenContentModal from "./fullscreen-content-modal"
 
 interface GeneratedContentCardProps {
   title?: string
   content: string
   type?: "lesson_plan" | "rubric" | "quiz" | "email" | "general"
   onShare?: () => void
+  calLink?: string
+  onMeetingSignup?: () => void
 }
 
 export default function GeneratedContentCard({ 
   title = "Generated Content", 
   content, 
   type = "general",
-  onShare 
+  onShare,
+  calLink,
+  onMeetingSignup
 }: GeneratedContentCardProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [isCopied, setIsCopied] = useState(false)
+  const [showFullscreen, setShowFullscreen] = useState(false)
 
   const handleCopy = async () => {
     try {
@@ -66,8 +72,20 @@ export default function GeneratedContentCard({
   // Preview is first 200 characters
   const preview = content.length > 200 ? content.substring(0, 200) + "..." : content
 
+  const handleFullscreen = () => {
+    if (onMeetingSignup) {
+      onMeetingSignup()
+    } else {
+      setShowFullscreen(true)
+    }
+  }
+
   return (
-    <Card className={`bg-gradient-to-br ${getTypeColor()} shadow-sm hover:shadow-md transition-all duration-200 max-w-[95%]`}>
+    <>
+      <Card 
+        className={`bg-gradient-to-br ${getTypeColor()} shadow-sm hover:shadow-md transition-all duration-200 max-w-[95%] cursor-pointer`}
+        onClick={handleFullscreen}
+      >
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-lg font-semibold text-gray-900">
@@ -75,18 +93,26 @@ export default function GeneratedContentCard({
             <span className="text-xl">{getTypeIcon()}</span>
             {title}
           </CardTitle>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="text-gray-600 hover:text-gray-900"
-          >
-            {isExpanded ? (
-              <ChevronUp className="h-4 w-4" />
-            ) : (
-              <ChevronDown className="h-4 w-4" />
+          <div className="flex items-center gap-2">
+            {onMeetingSignup && (
+              <Lock className="h-4 w-4 text-orange-500" title="Sign up for a meeting to view full content" />
             )}
-          </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation()
+                setIsExpanded(!isExpanded)
+              }}
+              className="text-gray-600 hover:text-gray-900"
+            >
+              {isExpanded ? (
+                <ChevronUp className="h-4 w-4" />
+              ) : (
+                <ChevronDown className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
         </div>
       </CardHeader>
       
@@ -113,7 +139,10 @@ export default function GeneratedContentCard({
           <Button
             variant="outline"
             size="sm"
-            onClick={handleCopy}
+            onClick={(e) => {
+              e.stopPropagation()
+              handleCopy()
+            }}
             className="flex items-center gap-2"
           >
             <Copy className="h-4 w-4" />
@@ -124,11 +153,29 @@ export default function GeneratedContentCard({
             <Button
               variant="outline"
               size="sm"
-              onClick={onShare}
+              onClick={(e) => {
+                e.stopPropagation()
+                onShare()
+              }}
               className="flex items-center gap-2"
             >
               <ExternalLink className="h-4 w-4" />
               Share
+            </Button>
+          )}
+          
+          {onMeetingSignup && calLink && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation()
+                onMeetingSignup()
+              }}
+              className="flex items-center gap-2 text-orange-600 border-orange-200 hover:bg-orange-50"
+            >
+              <Calendar className="h-4 w-4" />
+              Book Meeting
             </Button>
           )}
           
@@ -140,5 +187,17 @@ export default function GeneratedContentCard({
         </div>
       </CardContent>
     </Card>
+
+    {/* Fullscreen Modal */}
+    {!onMeetingSignup && (
+      <FullscreenContentModal
+        isOpen={showFullscreen}
+        onClose={() => setShowFullscreen(false)}
+        title={title}
+        content={content}
+        contentType={type}
+      />
+    )}
+    </>
   )
 }

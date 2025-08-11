@@ -244,10 +244,11 @@ Return ONLY this JSON structure:
           const contextLength = recentContext.split('\n').length
           
           // Check if user is asking for something to be created directly
-          const createKeywords = ['create', 'make', 'generate', 'build', 'write', 'plan', 'design', 'help me with']
-          const contentKeywords = ['lesson', 'quiz', 'test', 'rubric', 'assignment', 'activity', 'worksheet', 'email', 'letter']
-          const isDirectRequest = createKeywords.some(keyword => message.includes(keyword)) && 
-                                 contentKeywords.some(keyword => message.includes(keyword))
+          const createKeywords = ['create', 'make', 'generate', 'build', 'write', 'plan', 'design', 'help me with', 'materials', 'teaching materials']
+          const contentKeywords = ['lesson', 'quiz', 'test', 'rubric', 'assignment', 'activity', 'worksheet', 'email', 'letter', 'materials', 'resources', 'template']
+          const isDirectRequest = createKeywords.some(keyword => message.includes(keyword)) || 
+                                 contentKeywords.some(keyword => message.includes(keyword)) ||
+                                 message.includes('teaching materials')
           
           let prompt = ''
           
@@ -255,22 +256,25 @@ Return ONLY this JSON structure:
             // Directly create the requested content
             prompt = `You are Henry, a helpful AI assistant for ${body.userData.name || 'a teacher'} (${body.userData.role || 'teacher'}). 
 
+Based on our conversation: ${recentContext}
+
 They requested: "${body.message}"
 
-Create what they asked for immediately. Be specific and practical. If it's a lesson plan, include objectives, materials, steps, and timing. If it's a quiz, include questions and answers. If it's a rubric, include criteria and performance levels. Make it ready to use.
+First, explain that you'd love to help create personalized teaching materials, but to ensure they get the most value and can implement them effectively, you'd like to schedule a quick meeting to understand their specific needs, classroom dynamics, and teaching style. Mention that this allows you to tailor the materials perfectly and provide ongoing support.
 
-Return ONLY this JSON structure:
-{
-  "type": "generated_content",
-  "message": "Here's what you requested:",
-  "generated_content": {
-    "title": "Your [Lesson Plan/Quiz/Rubric/etc.]",
-    "content": "[The complete, detailed content]",
-    "content_type": "lesson_plan"
-  },
-  "cal_link": "https://cal.com/hudsonmp/henry-ai-club",
-  "step": 3
-}`
+Then say "To view a preview of what I can create, here's a sample template:"
+
+Then create a comprehensive, practical teaching material preview. Include:
+- Clear objectives and goals
+- Step-by-step instructions
+- Materials needed
+- Time estimates
+- Assessment criteria
+- Differentiation strategies
+
+Make it professional and ready to use immediately. Format with headers, bullet points, and clear sections.
+
+End by encouraging them to book a meeting to get their own personalized version and implementation support.`
           } else if (contextLength >= 6) {
             // If we've had several exchanges, start generating content instead of just asking questions
             prompt = `You are Henry, a helpful AI assistant for ${body.userData.name || 'a teacher'} (${body.userData.role || 'teacher'}). 
@@ -279,42 +283,13 @@ Based on our conversation: ${recentContext}
 
 They just said: "${body.message}"
 
-Instead of asking more questions, provide a helpful, actionable response. If they mentioned any teaching challenge, offer specific solutions, resources, or tools. If they need something created, create it immediately and return it as generated content.
-
-If creating content, return this structure:
-{
-  "type": "generated_content",
-  "message": "Here's what I created for you:",
-  "generated_content": {
-    "title": "Helpful [Resource/Template/etc.]",
-    "content": "[The complete content]",
-    "content_type": "general"
-  },
-  "cal_link": "https://cal.com/hudsonmp/henry-ai-club",
-  "step": 3
-}
-
-If just providing advice, return:
-{
-  "type": "text",
-  "message": "Your helpful, actionable response with specific solutions",
-  "cal_link": "https://cal.com/hudsonmp/henry-ai-club",
-  "step": 3
-}`
+Instead of asking more questions, provide helpful, actionable solutions. Create specific teaching materials, templates, or resources they can use immediately. Be practical and detailed with step-by-step guidance.`
           } else {
             prompt = `You are Henry, a friendly AI bot helping ${body.userData.name || 'a teacher'} (${body.userData.role || 'teacher'}). 
 
 They just said: "${body.message}"
 
-Ask 1-2 specific questions to understand what they need help with, then offer to create something concrete (lesson plan, rubric, quiz, etc.). Be conversational but goal-oriented. Don't just chat - aim to help them create something useful.
-
-Return ONLY this JSON structure:
-{
-  "type": "text",
-  "message": "Your helpful response with specific questions and offers to create content",
-  "cal_link": "https://cal.com/hudsonmp/henry-ai-club",
-  "step": 3
-}`
+Ask 1-2 specific questions to understand what they need help with, then offer to create something concrete (lesson plan, rubric, quiz, etc.). Be conversational but goal-oriented. Don't just chat - aim to help them create something useful.`
           }
 
           const completion = await groq.chat.completions.create({
@@ -344,11 +319,32 @@ Return ONLY this JSON structure:
             return NextResponse.json(parsedResponse)
           } catch (parseError) {
             console.error("Failed to parse JSON response:", parseError)
-            return NextResponse.json({
-              type: "text",
-              message: response.trim(),
-              step: 3
-            })
+            console.log("Raw response:", response)
+            
+            // If JSON parsing fails, treat as regular text and check if it should be generated content
+            const isLongContent = response.length > 300
+            const hasStructuredContent = response.includes('**') || response.includes('1.') || response.includes('•')
+            
+            if (isLongContent && hasStructuredContent) {
+              return NextResponse.json({
+                type: "generated_content",
+                message: "Here's what I created for you:",
+                generated_content: {
+                  title: "Generated Content",
+                  content: response.trim(),
+                  content_type: "general"
+                },
+                cal_link: "https://cal.com/hudsonmp/henry-ai-club",
+                step: 3
+              })
+            } else {
+              return NextResponse.json({
+                type: "text",
+                message: response.trim(),
+                cal_link: "https://cal.com/hudsonmp/henry-ai-club",
+                step: 3
+              })
+            }
           }
         }
 

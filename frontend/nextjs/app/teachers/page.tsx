@@ -219,6 +219,7 @@ export default function TeachersPage() {
   const [showMeetingBooking, setShowMeetingBooking] = useState(false)
   const [changeRequestInput, setChangeRequestInput] = useState('')
   const [currentProblem, setCurrentProblem] = useState<string>("")
+  const [hasBookedMeeting, setHasBookedMeeting] = useState(false)
   // New state variables for 6-step flow
   const [conversationStep, setConversationStep] = useState(1)
   const [meetingBooked, setMeetingBooked] = useState(false)
@@ -1228,7 +1229,7 @@ The user is a ${value} named ${userName}. This is your first response after they
               onClick={clearChat}
               className="text-sm text-gray-600 hover:text-gray-900 transition-colors"
             >
-              Reset Chat {showPreChat ? '(Pre-Chat)' : '(Main Chat)'} - Debug: {showPreChat.toString()}
+              Reset Chat
             </button>
             <button
               onClick={() => window.location.href = '/'}
@@ -1596,6 +1597,8 @@ The user is a ${value} named ${userName}. This is your first response after they
                     title={message.generated_content.title}
                     content={message.generated_content.content}
                     type={message.generated_content.content_type as any}
+                    onMeetingSignup={!hasBookedMeeting ? () => setShowMeetingBooking(true) : undefined}
+                    calLink={message.cal_link}
                   />
                   {message.cal_link && (
                     <div className="text-sm text-gray-600 bg-blue-50 border border-blue-200 rounded-lg p-3">
@@ -1750,6 +1753,31 @@ The user is a ${value} named ${userName}. This is your first response after they
           </div>
         )}
 
+        {/* Generate Material Button */}
+        {hasUserSentMessage && messages.length >= 4 && (
+          <div className="px-4 pb-2">
+            <div className="max-w-4xl mx-auto">
+              <button
+                onClick={() => {
+                  const generateMessage = "Please generate helpful teaching materials based on our conversation."
+                  const userMessage: Message = {
+                    id: Date.now().toString(),
+                    content: generateMessage,
+                    sender: "user",
+                    timestamp: new Date(),
+                    type: "text"
+                  }
+                  setMessages(prev => [...prev, userMessage])
+                  handleSendMessage(generateMessage)
+                }}
+                className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white py-3 px-4 rounded-lg font-medium transition-all duration-200 shadow-sm hover:shadow-md"
+              >
+                ✨ Generate Teaching Materials
+              </button>
+            </div>
+          </div>
+        )}
+
         {hasUserSentMessage && (/* Input Area - Always at bottom */
         <div className="p-4 w-full">
           <div 
@@ -1840,6 +1868,7 @@ The user is a ${value} named ${userName}. This is your first response after they
                 onBooked={() => {
                   analytics.trackMeetingBooked()
                   setShowMeetingBooking(false)
+                  setHasBookedMeeting(true)
                   toast.success("🎉 you're on my calendar!")
                 }}
               />
