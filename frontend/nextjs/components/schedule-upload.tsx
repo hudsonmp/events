@@ -22,22 +22,19 @@ export default function ScheduleUpload({ onUploadComplete, isProcessing }: Sched
     const file = acceptedFiles[0]
     if (!file) return
 
+    // Immediately advance to next step
+    const imageUrl = URL.createObjectURL(file)
+    onUploadComplete(imageUrl)
+
+    // Process in background
     try {
-      // Convert file to base64
       const reader = new FileReader()
       reader.onload = async (e) => {
         const base64Data = e.target?.result as string
         const base64Image = base64Data.split(',')[1] // Remove data:image/jpeg;base64, prefix
         
-        // Show upload progress
-        let progress = 0
-        const uploadInterval = setInterval(() => {
-          progress += Math.random() * 30
-          setUploadProgress(Math.min(progress, 90))
-        }, 200)
-
         try {
-          // Call the parse API
+          // Call the parse API in background
           const response = await fetch('/api/parse-schedule', {
             method: 'POST',
             headers: {
@@ -47,28 +44,20 @@ export default function ScheduleUpload({ onUploadComplete, isProcessing }: Sched
           })
 
           if (!response.ok) {
-            throw new Error('Failed to parse schedule')
+            console.warn('Schedule parsing failed, but continuing with user flow')
+          } else {
+            const parsedData = await response.json()
+            // Store parsed data for later use
+            localStorage.setItem('parsedSchedule', JSON.stringify(parsedData))
           }
-
-          clearInterval(uploadInterval)
-          setUploadProgress(100)
-
-          // Create URL for the uploaded image and complete
-          const imageUrl = URL.createObjectURL(file)
-          onUploadComplete(imageUrl)
-
         } catch (error) {
-          clearInterval(uploadInterval)
-          console.error('Error parsing schedule:', error)
-          // Still complete with the image for demo purposes
-          const imageUrl = URL.createObjectURL(file)
-          onUploadComplete(imageUrl)
+          console.warn('Error parsing schedule in background:', error)
         }
       }
       
       reader.readAsDataURL(file)
     } catch (error) {
-      console.error('Error processing file:', error)
+      console.warn('Error processing file in background:', error)
     }
   }, [onUploadComplete])
 

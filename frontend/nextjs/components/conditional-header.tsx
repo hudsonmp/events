@@ -7,8 +7,8 @@ import { Navigation } from "@/components/navigation"
 export function ConditionalHeader() {
   const pathname = usePathname()
   
-  // Hide header on add-event page
-  if (pathname === "/add-event") {
+  // Only show header on /events routes
+  if (!pathname.startsWith("/events")) {
     return null
   }
 

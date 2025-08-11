@@ -216,6 +216,17 @@ header {
   animation-delay: 4s;
 }
 
+  /* Slow hue rotation for gradient background */
+  @keyframes hue {
+    0% { filter: hue-rotate(0deg); }
+    50% { filter: hue-rotate(25deg); }
+    100% { filter: hue-rotate(0deg); }
+  }
+
+  .animate-hue {
+    animation: hue 20s ease-in-out infinite;
+  }
+
 /* Typing animation */
 @keyframes typing {
   0%, 20% { opacity: 0; }

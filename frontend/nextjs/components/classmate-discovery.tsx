@@ -50,31 +50,35 @@ interface ClassmateDiscoveryProps {
   onStartOver: () => void
 }
 
-// Mock data for classmates
-const generateMockClassmates = (userSchedule: SchedulePeriod[]): ClassmateMatch[] => {
-  const mockStudents: Student[] = [
-    { id: '1', username: 'sarah_m_2025', name: 'Sarah Martinez', profile_pic_url: null },
-    { id: '2', username: 'alex_chen_23', name: 'Alex Chen', profile_pic_url: null },
-    { id: '3', username: 'emma.wilson', name: 'Emma Wilson', profile_pic_url: null },
-    { id: '4', username: 'tyler_j', name: 'Tyler Johnson', profile_pic_url: null },
-    { id: '5', username: 'maya.patel.2025', name: 'Maya Patel', profile_pic_url: null },
-  ]
+// Fetch real classmates from API using authenticated user
+const fetchRealClassmates = async (schedule: { periods: SchedulePeriod[] }): Promise<ClassmateMatch[]> => {
+  try {
+    const response = await fetch('/api/find-classmates', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        schedule
+      })
+    })
 
-  return mockStudents.map(student => {
-    const sharedClasses = Math.floor(Math.random() * 5) + 1
-    const sharedPeriods = userSchedule.slice(0, sharedClasses)
-    const matchPercentage = Math.floor((sharedClasses / userSchedule.length) * 100)
-    const reactions = ['🔥', '💬', '👀'].filter(() => Math.random() > 0.5)
-    
-    return {
-      student,
-      sharedClasses,
-      matchPercentage,
-      sharedPeriods,
-      reactions,
-      lastSeen: `${Math.floor(Math.random() * 10) + 1}m ago`
+    if (!response.ok) {
+      throw new Error('Failed to fetch classmates')
     }
-  }).sort((a, b) => b.sharedClasses - a.sharedClasses)
+
+    const data = await response.json()
+    
+    if (data.message) {
+      // API returned a message (like "Upload your schedule first")
+      console.log('API message:', data.message)
+    }
+    
+    return data.classmates || []
+  } catch (error) {
+    console.error('Error fetching classmates:', error)
+    return []
+  }
 }
 
 export default function ClassmateDiscovery({ schedule, student, onStartOver }: ClassmateDiscoveryProps) {
@@ -87,16 +91,28 @@ export default function ClassmateDiscovery({ schedule, student, onStartOver }: C
   const supabase = createClient()
 
   useEffect(() => {
-    // Simulate loading classmates
-    setTimeout(() => {
-      const mockClassmates = generateMockClassmates(schedule.periods)
-      setClassmates(mockClassmates)
-      setLoading(false)
-      setShowCelebration(true)
-      
-      // Hide celebration after 3 seconds
-      setTimeout(() => setShowCelebration(false), 3000)
-    }, 1500)
+    // Fetch real classmates
+    const loadClassmates = async () => {
+      try {
+        const realClassmates = await fetchRealClassmates(schedule)
+        setClassmates(realClassmates)
+        setLoading(false)
+        
+        if (realClassmates.length > 0) {
+          setShowCelebration(true)
+          // Hide celebration after 3 seconds
+          const timer = setTimeout(() => setShowCelebration(false), 3000)
+          return () => clearTimeout(timer)
+        }
+      } catch (error) {
+        console.error('Error loading classmates:', error)
+        setLoading(false)
+      }
+    }
+
+    // Small delay for better UX
+    const loadTimer = setTimeout(loadClassmates, 1500)
+    return () => clearTimeout(loadTimer)
   }, [schedule])
 
   const sendDM = (classmate: ClassmateMatch) => {

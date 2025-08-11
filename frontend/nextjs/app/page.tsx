@@ -1,215 +1,115 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { createClient } from "@/lib/supabase/client"
-import { CompactCalendar } from "@/components/compact-calendar"
-import { TrendingEvents } from "@/components/trending-events"
-import { CategoriesSection } from "@/components/categories-section"
-import { PopularTags } from "@/components/popular-tags"
-import { MyEventsHorizontal } from "@/components/my-events-horizontal"
-import type { Event } from "@/lib/types"
+import Link from "next/link"
+import { useEffect, useState } from "react"
+import { CardDescription, CardTitle } from "@/components/ui/card"
+import { Calendar, Users, GraduationCap, Wand2 } from "lucide-react"
+import { SafeMotionDiv } from "@/lib/motion-safe"
 
 export default function HomePage() {
-  const [trendingEvents, setTrendingEvents] = useState<Event[]>([])
-  const [calendarEvents, setCalendarEvents] = useState<Event[]>([])
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
-  const [selectedCategoryName, setSelectedCategoryName] = useState<string | null>(null)
-  const [selectedTag, setSelectedTag] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-  const supabase = createClient()
+  const [typedText, setTypedText] = useState("")
+  const fullText = "Henry AI Club"
 
   useEffect(() => {
-    const fetchEvents = async () => {
-      try {
-        // Create a more reliable timestamp for mobile Safari
-        const now = new Date()
-        const timestamp = now.getFullYear() + '-' + 
-          String(now.getMonth() + 1).padStart(2, '0') + '-' + 
-          String(now.getDate()).padStart(2, '0') + 'T' + 
-          String(now.getHours()).padStart(2, '0') + ':' + 
-          String(now.getMinutes()).padStart(2, '0') + ':' + 
-          String(now.getSeconds()).padStart(2, '0') + '.000Z'
+    let index = 0
+    const interval = setInterval(() => {
+      setTypedText(fullText.slice(0, index + 1))
+      index++
+      if (index === fullText.length) clearInterval(interval)
+    }, 70)
+    return () => clearInterval(interval)
+  }, [])
 
-        // Fetch trending events
-        const { data: trendingData, error: trendingError } = await supabase
-          .from("events")
-          .select(`
-            *,
-            categories:event_categories(category:categories(id, name)),
-            tags:event_tags(tag),
-            profile:profiles!events_profile_id_fkey(username, profile_pic_url, bio),
-            school:schools(name, address),
-            post:posts!post_id(
-              post_images(file_path)
-            ),
-            event_images:event_images(
-              image:images(id, storage_path, url)
-            ),
-            attendees:event_attendees(user_id)
-          `)
-          .eq("status", "active")
-          .gte("start_datetime", timestamp)
-          .limit(20)
-
-        if (trendingData && !trendingError) {
-          // Sort by attendee count (most RSVPs first)
-          const sortedData = trendingData.sort((a, b) => {
-            const aCount = a.attendees?.length || 0
-            const bCount = b.attendees?.length || 0
-            return bCount - aCount
-          })
-          setTrendingEvents(sortedData)
-        }
-
-        // Fetch calendar events
-        const { data: calendarData, error: calendarError } = await supabase
-          .from("events")
-          .select(`
-            *,
-            categories:event_categories(category:categories(id, name)),
-            tags:event_tags(tag),
-            profile:profiles!events_profile_id_fkey(username, profile_pic_url, bio),
-            school:schools(name, address),
-            post:posts!post_id(
-              post_images(file_path)
-            ),
-            event_images:event_images(
-              image:images(id, storage_path, url)
-            )
-          `)
-          .eq("status", "active")
-          .order("start_datetime", { ascending: true })
-          .limit(100)
-
-        if (calendarData && !calendarError) {
-          // Return all events including past ones for calendar display
-          setCalendarEvents(calendarData.filter(event => event.start_datetime))
-        }
-      } catch (error) {
-        console.error("Error fetching events:", error)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchEvents()
-  }, [supabase])
-
-  const handleCategoryClick = (categoryId: string, categoryName: string) => {
-    if (selectedCategoryId === categoryId) {
-      // If clicking the same category, clear the filter
-      setSelectedCategoryId(null)
-      setSelectedCategoryName(null)
-    } else {
-      // Set new category filter and clear tag filter
-      setSelectedCategoryId(categoryId)
-      setSelectedCategoryName(categoryName)
-      setSelectedTag(null) // Clear tag when selecting category
-    }
-  }
-
-  const handleTagClick = (tag: string) => {
-    if (selectedTag === tag) {
-      // If clicking the same tag, clear the filter
-      setSelectedTag(null)
-    } else {
-      // Set new tag filter and clear category filter
-      setSelectedTag(tag)
-      setSelectedCategoryId(null) // Clear category when selecting tag
-      setSelectedCategoryName(null)
-    }
-  }
-
-  const handleClearFilter = () => {
-    setSelectedCategoryId(null)
-    setSelectedCategoryName(null)
-    setSelectedTag(null)
-  }
+  const cards = [
+    {
+      href: "/build",
+      title: "Build",
+      description: "Describe an idea, and our AI will make it real in minutes.",
+      icon: Wand2,
+      color: "from-emerald-500/15 to-amber-400/15",
+    },
+    {
+      href: "/events",
+      title: "Events",
+      description: "See everything happening at Henry in one feed.",
+      icon: Calendar,
+      color: "from-emerald-500/15 to-emerald-400/15",
+    },
+    {
+      href: "/teachers",
+      title: "Teachers",
+      description: "Teachers and staff, this is for you! We want to use AI to make your life easier.",
+      icon: GraduationCap,
+      color: "from-amber-400/15 to-emerald-400/15",
+    },
+    {
+      href: "/schedule",
+      title: "Schedule",
+      description: "Share and compare class schedules with friends.",
+      icon: Users,
+      color: "from-amber-400/15 to-amber-300/15",
+    },
+  ] as const
 
   return (
-    <section className="w-full min-h-screen bg-white">
-      {/* Header */}
-      <div className="px-4 pt-6 pb-2">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Discover</h1>
-            <p className="text-gray-600 text-sm">Patrick Henry High School</p>
-          </div>
-        </div>
+    <div className="relative min-h-screen overflow-hidden">
+      {/* Gradient/Blob Background */}
+      <div className="pointer-events-none absolute inset-0 -z-10">
+        <div className="absolute -top-24 -left-24 h-96 w-96 rounded-full bg-emerald-400 blur-3xl opacity-30 mix-blend-multiply animate-blob animate-hue"></div>
+        <div className="absolute top-1/3 -right-20 h-[28rem] w-[28rem] rounded-full bg-amber-300 blur-3xl opacity-30 mix-blend-multiply animate-blob animation-delay-2000 animate-hue"></div>
+        <div className="absolute -bottom-24 left-1/3 h-96 w-96 rounded-full bg-emerald-300 blur-3xl opacity-30 mix-blend-multiply animate-blob animation-delay-4000 animate-hue"></div>
+        <div className="absolute inset-0 bg-gradient-to-br from-emerald-50 via-white to-amber-50" />
       </div>
 
-      {/* Mobile Layout */}
-      <div className="lg:hidden">
-        <div className="space-y-2">
-          {/* Trending Events */}
-          <TrendingEvents 
-            initialEvents={trendingEvents} 
-            selectedCategoryId={selectedCategoryId}
-            selectedCategoryName={selectedCategoryName}
-            selectedTag={selectedTag}
-            onClearFilter={handleClearFilter}
-          />
-          
-          {/* Compact Calendar */}
-          <div className="px-4 py-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Upcoming Events</h2>
-            <CompactCalendar events={calendarEvents} />
-          </div>
-          
-          {/* Categories */}
-          <CategoriesSection 
-            onCategoryClick={handleCategoryClick}
-            selectedCategoryId={selectedCategoryId}
-          />
-          
-          {/* Popular Tags */}
-          <PopularTags 
-            onTagClick={handleTagClick}
-            selectedTag={selectedTag}
-          />
-          
-          {/* My Events */}
-          <MyEventsHorizontal />
+      <div className="relative mx-auto max-w-6xl px-4 py-20 md:py-28">
+        {/* Hero */}
+        <SafeMotionDiv
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+          className="text-center"
+        >
+          <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight text-slate-900">
+            <span className="logo-gradient">{typedText}</span>
+            <span className="border-r-2 border-emerald-600 ml-1 align-middle animate-pulse" />
+          </h1>
+          <p className="mt-4 text-lg md:text-2xl text-slate-600">
+            Four tools. One hub. Powered by AI.
+          </p>
+          <p className="mt-2 text-sm md:text-base text-slate-500">Choose your tool ↓</p>
+        </SafeMotionDiv>
+
+        {/* Tools Grid */}
+        <div className="mt-10 grid grid-cols-1 gap-5 md:mt-14 md:grid-cols-2">
+          {cards.map(({ href, title, description, icon: Icon, color }, idx) => (
+            <Link key={title} href={href} className="group">
+              <SafeMotionDiv
+                initial={{ opacity: 0, y: 24 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.1 * idx }}
+                whileHover={{ y: -6, scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className={`relative overflow-hidden rounded-2xl border bg-white/70 p-6 shadow-sm backdrop-blur-md transition-all duration-300 hover:shadow-xl`}
+              >
+                <div className={`absolute inset-0 bg-gradient-to-br ${color} opacity-0 transition-opacity duration-300 group-hover:opacity-100`} />
+                <div className="relative flex items-start gap-4">
+                  <SafeMotionDiv
+                    animate={{ y: [0, -4, 0] }}
+                    transition={{ repeat: Infinity, duration: 2.2, ease: "easeInOut" }}
+                    className="grid h-12 w-12 place-items-center rounded-xl bg-white/80 shadow ring-1 ring-black/5"
+                  >
+                    <Icon className="h-6 w-6 text-emerald-600" />
+                  </SafeMotionDiv>
+                  <div>
+                    <CardTitle className="text-xl font-semibold text-slate-900">{title}</CardTitle>
+                    <CardDescription className="mt-1 text-slate-600">{description}</CardDescription>
+                  </div>
+                </div>
+              </SafeMotionDiv>
+            </Link>
+          ))}
         </div>
       </div>
-      
-      {/* Desktop Layout */}
-      <div className="hidden lg:flex gap-6 max-w-screen-2xl mx-auto p-4">
-        {/* Main Content - 2/3 width */}
-        <div className="flex-1 max-w-none space-y-2">
-          {/* Trending Events */}
-          <TrendingEvents 
-            initialEvents={trendingEvents} 
-            selectedCategoryId={selectedCategoryId}
-            selectedCategoryName={selectedCategoryName}
-            selectedTag={selectedTag}
-            onClearFilter={handleClearFilter}
-          />
-          
-          {/* Categories */}
-          <CategoriesSection 
-            onCategoryClick={handleCategoryClick}
-            selectedCategoryId={selectedCategoryId}
-          />
-          
-          {/* Popular Tags */}
-          <PopularTags 
-            onTagClick={handleTagClick}
-            selectedTag={selectedTag}
-          />
-          
-          {/* My Events */}
-          <MyEventsHorizontal />
-        </div>
-        
-        {/* Calendar Sidebar - 1/3 width */}
-        <div className="w-80 flex-shrink-0">
-          <div className="sticky top-20">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Upcoming Events</h2>
-            <CompactCalendar events={calendarEvents} />
-          </div>
-        </div>
-      </div>
-    </section>
+    </div>
   )
 }

@@ -7,15 +7,39 @@ export function createClient() {
   )
 }
 
-// Cache to track users we've already ensured exist
+// Enhanced caching system
 const ensuredUsers = new Set<string>()
+const apiCache = new Map<string, { data: any, timestamp: number, ttl: number }>()
 
-// Helper function to ensure user exists in public.users table
+// Generic cache helper
+function getCachedData<T>(key: string): T | null {
+  const cached = apiCache.get(key)
+  if (cached && Date.now() - cached.timestamp < cached.ttl) {
+    return cached.data as T
+  }
+  apiCache.delete(key) // Clean up expired entries
+  return null
+}
+
+function setCachedData(key: string, data: any, ttl: number = 30000) {
+  apiCache.set(key, { data, timestamp: Date.now(), ttl })
+}
+
+// Optimized user existence check with multiple cache layers
 async function ensureUserExists(userId: string) {
-  // If we've already ensured this user exists, skip the API call
+  // Cache layer 1: In-memory set for immediate checks
   if (ensuredUsers.has(userId)) {
     return { error: null }
   }
+
+  // Cache layer 2: Timed cache with TTL
+  const cacheKey = `user-exists-${userId}`
+  const cachedResult = getCachedData<{ error: null }>(cacheKey)
+  if (cachedResult) {
+    ensuredUsers.add(userId) // Also update the set cache
+    return cachedResult
+  }
+
   try {
     const response = await fetch('/api/ensure-user', {
       method: 'POST',
@@ -25,15 +49,17 @@ async function ensureUserExists(userId: string) {
       body: JSON.stringify({ userId }),
     })
 
-         if (!response.ok) {
-       const errorData = await response.json()
-       console.error('Error ensuring user exists:', errorData.error)
-       return { error: { message: errorData.error } }
-     }
+    if (!response.ok) {
+      const errorData = await response.json()
+      console.error('Error ensuring user exists:', errorData.error)
+      return { error: { message: errorData.error } }
+    }
 
-     // Add user to cache after successful creation/verification
-     ensuredUsers.add(userId)
-     return { error: null }
+    // Cache success result for 5 minutes
+    const result = { error: null }
+    ensuredUsers.add(userId)
+    setCachedData(cacheKey, result, 300000) // 5 minutes
+    return result
   } catch (error) {
     console.error('Error calling ensure-user API:', error)
     return { error: { message: 'Failed to ensure user exists' } }
@@ -74,6 +100,10 @@ export async function cancelRsvp(eventId: string, userId: string) {
 }
 
 export async function checkRsvpStatus(eventId: string, userId: string) {
+  const cacheKey = `rsvp-status-${eventId}-${userId}`
+  const cached = getCachedData<{ isRsvpd: boolean, error: any }>(cacheKey)
+  if (cached) return cached
+
   const supabase = createClient()
   
   const { data, error } = await supabase
@@ -83,10 +113,17 @@ export async function checkRsvpStatus(eventId: string, userId: string) {
     .eq('user_id', userId)
     .single()
 
-  return { isRsvpd: !!data && !error, error }
+  const result = { isRsvpd: !!data && !error, error }
+  // Cache for 30 seconds - RSVP status changes frequently
+  setCachedData(cacheKey, result, 30000)
+  return result
 }
 
 export async function getRsvpCount(eventId: string) {
+  const cacheKey = `rsvp-count-${eventId}`
+  const cached = getCachedData<{ count: number, error: any }>(cacheKey)
+  if (cached) return cached
+
   const supabase = createClient()
   
   const { count, error } = await supabase
@@ -94,5 +131,8 @@ export async function getRsvpCount(eventId: string) {
     .select('*', { count: 'exact', head: true })
     .eq('event_id', eventId)
 
-  return { count: count || 0, error }
+  const result = { count: count || 0, error }
+  // Cache for 10 seconds - count changes frequently but can be slightly stale
+  setCachedData(cacheKey, result, 10000)
+  return result
 }

@@ -77,7 +77,7 @@ export function ArtifactCards({ data, onTimeSaved }: ArtifactCardsProps) {
       <div className="flex items-center justify-between mb-3 w-full">
         <div className="flex items-center space-x-2 flex-1 min-w-0">
           <CheckSquare className="h-5 w-5 text-blue-600 flex-shrink-0" />
-          <span className="font-medium text-blue-900 truncate">{data.summary}</span>
+          <span className="font-medium text-blue-900 truncate">{data.summary || 'Ready to go'}</span>
         </div>
         {data.confidence < 0.6 && (
           <Badge variant="outline" className="text-orange-600 border-orange-300 flex-shrink-0 ml-2">
@@ -87,7 +87,7 @@ export function ArtifactCards({ data, onTimeSaved }: ArtifactCardsProps) {
         )}
       </div>
       <div className="flex flex-wrap gap-2 w-full">
-        {data.suggested_actions.map((action, index) => (
+        {(data.suggested_actions || []).map((action, index) => (
           <Button
             key={index}
             variant="outline"

@@ -3,10 +3,12 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { createClient } from '@/lib/supabase/client'
+import { useAuth } from '@/lib/contexts/auth-context'
 import ScheduleUpload from '@/components/schedule-upload'
 import ScheduleDisplay from '@/components/schedule-display'
 import StudentSearch from '@/components/student-search'
 import ClassmateDiscovery from '@/components/classmate-discovery'
+import { StudentPreviewScroll } from '@/components/student-preview-scroll'
 import { Upload, Users, Sparkles, Calendar, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -54,6 +56,7 @@ export default function SchedulePage() {
     classesMatched: 0
   })
 
+  const { user } = useAuth()
   const supabase = createClient()
 
   useEffect(() => {
@@ -80,31 +83,34 @@ export default function SchedulePage() {
     setState(prev => ({
       ...prev,
       uploadedImage: imageUrl,
-      isProcessing: true
+      step: 'search' // Immediately go to search step
     }))
 
-    // Simulate AI processing delay
-    setTimeout(() => {
-      // Mock parsed schedule data
-      const mockSchedule: ParsedSchedule = {
-        periods: [
-          { period: 1, time: '8:00-8:50', subject: 'AP Physics C', teacher: 'Mr. Johnson', room: 'B204' },
-          { period: 2, time: '9:00-9:50', subject: 'AP Calculus BC', teacher: 'Ms. Chen', room: 'A301' },
-          { period: 3, time: '10:00-10:50', subject: 'AP English Lit', teacher: 'Mrs. Rodriguez', room: 'C105' },
-          { period: 4, time: '11:00-11:50', subject: 'Lunch', teacher: '', room: 'Cafeteria' },
-          { period: 5, time: '12:00-12:50', subject: 'AP US History', teacher: 'Mr. Thompson', room: 'D201' },
-          { period: 6, time: '1:00-1:50', subject: 'Chemistry Honors', teacher: 'Dr. Patel', room: 'B107' },
-          { period: 7, time: '2:00-2:50', subject: 'Computer Science A', teacher: 'Ms. Kim', room: 'A205' }
-        ]
+    // Try to get parsed schedule from background processing
+    const checkForParsedSchedule = () => {
+      const stored = localStorage.getItem('parsedSchedule')
+      if (stored) {
+        try {
+          const parsedSchedule = JSON.parse(stored)
+          setState(prev => ({
+            ...prev,
+            parsedSchedule: parsedSchedule
+          }))
+          localStorage.removeItem('parsedSchedule') // Clean up
+        } catch (error) {
+          console.warn('Error parsing stored schedule:', error)
+        }
       }
+    }
 
-      setState(prev => ({
-        ...prev,
-        parsedSchedule: mockSchedule,
-        isProcessing: false,
-        step: 'search'
-      }))
-    }, 3000)
+    // Check immediately and then periodically
+    checkForParsedSchedule()
+    const interval = setInterval(checkForParsedSchedule, 1000)
+    
+    // Clean up after 30 seconds
+    setTimeout(() => {
+      clearInterval(interval)
+    }, 30000)
   }
 
   const handleStudentSelect = (student: Student | null) => {
@@ -211,7 +217,7 @@ export default function SchedulePage() {
                   animate={{ opacity: 1 }}
                   transition={{ delay: 0.3 }}
                 >
-                  Find your class crew in 30 seconds
+                  Find your classmates in 30 seconds
                 </motion.p>
 
                 {/* Stats Cards */}
@@ -256,7 +262,7 @@ export default function SchedulePage() {
             </motion.div>
           )}
 
-          {state.step === 'display' && state.parsedSchedule && (
+          {state.step === 'display' && (
             <motion.div
               key="display"
               initial={{ opacity: 0, y: 20 }}
@@ -265,15 +271,25 @@ export default function SchedulePage() {
               transition={{ duration: 0.3 }}
             >
               <ScheduleDisplay
-                schedule={state.parsedSchedule}
+                schedule={state.parsedSchedule || {
+                  periods: [
+                    { period: 1, time: '8:00-8:50', subject: 'Period 1', teacher: 'TBD' },
+                    { period: 2, time: '9:00-9:50', subject: 'Period 2', teacher: 'TBD' },
+                    { period: 3, time: '10:00-10:50', subject: 'Period 3', teacher: 'TBD' },
+                    { period: 4, time: '11:00-11:50', subject: 'Lunch', teacher: '' },
+                    { period: 5, time: '12:00-12:50', subject: 'Period 5', teacher: 'TBD' },
+                    { period: 6, time: '1:00-1:50', subject: 'Period 6', teacher: 'TBD' }
+                  ]
+                }}
                 student={state.currentStudent}
                 onSave={handleScheduleSaved}
                 uploadedImage={state.uploadedImage}
+                isParsing={!state.parsedSchedule}
               />
             </motion.div>
           )}
 
-          {state.step === 'social' && state.parsedSchedule && (
+          {state.step === 'social' && (
             <motion.div
               key="social"
               initial={{ opacity: 0, y: 20 }}
@@ -282,7 +298,16 @@ export default function SchedulePage() {
               transition={{ duration: 0.3 }}
             >
               <ClassmateDiscovery
-                schedule={state.parsedSchedule}
+                schedule={state.parsedSchedule || {
+                  periods: [
+                    { period: 1, time: '8:00-8:50', subject: 'Period 1', teacher: 'TBD' },
+                    { period: 2, time: '9:00-9:50', subject: 'Period 2', teacher: 'TBD' },
+                    { period: 3, time: '10:00-10:50', subject: 'Period 3', teacher: 'TBD' },
+                    { period: 4, time: '11:00-11:50', subject: 'Lunch', teacher: '' },
+                    { period: 5, time: '12:00-12:50', subject: 'Period 5', teacher: 'TBD' },
+                    { period: 6, time: '1:00-1:50', subject: 'Period 6', teacher: 'TBD' }
+                  ]
+                }}
                 student={state.currentStudent}
                 onStartOver={resetFlow}
               />

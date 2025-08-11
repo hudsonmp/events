@@ -66,6 +66,9 @@ export type AuthContextType = {
   signUpWithEmail: (email: string, password: string) => Promise<{ error: any }>
   signInWithGoogle: () => Promise<{ error: any }>
   signOut: () => Promise<{ error: any }>
+  showOnboarding: boolean
+  onboardingUserId: string | null
+  closeOnboarding: () => void
 }
 
 export const CATEGORIES = ["event", "club", "sport", "deadline", "meeting"] as const

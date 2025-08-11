@@ -146,7 +146,7 @@ export function MyEventsHorizontal() {
             <User className="h-5 w-5 text-blue-600" />
             <h2 className="text-xl font-bold text-gray-900">My Events</h2>
           </div>
-          <Link href="/my-events" className="text-blue-600 text-sm font-medium hover:text-blue-700">
+          <Link href="/events/my-events" className="text-blue-600 text-sm font-medium hover:text-blue-700">
             View All
           </Link>
         </div>
@@ -168,7 +168,7 @@ export function MyEventsHorizontal() {
             <User className="h-5 w-5 text-blue-600" />
             <h2 className="text-xl font-bold text-gray-900">My Events</h2>
           </div>
-          <Link href="/my-events" className="flex items-center gap-1 text-blue-600 text-sm font-medium hover:text-blue-700">
+          <Link href="/events/my-events" className="flex items-center gap-1 text-blue-600 text-sm font-medium hover:text-blue-700">
             View All
             <ChevronRight className="h-4 w-4" />
           </Link>

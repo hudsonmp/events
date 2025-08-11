@@ -8,29 +8,52 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false) // Start as false - don't block initial render
+  const [showOnboarding, setShowOnboarding] = useState(false)
+  const [onboardingUserId, setOnboardingUserId] = useState<string | null>(null)
   const supabase = createClient()
 
   useEffect(() => {
-    // Get initial session
+    let mounted = true
+    
+    // Get initial session - non-blocking
     const getInitialSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      setUser(session?.user ?? null)
-      setLoading(false)
+      try {
+        // Check local storage first for faster initial load
+        const localSession = localStorage.getItem('sb-' + process.env.NEXT_PUBLIC_SUPABASE_PROJECT_URL?.split('//')[1]?.split('.')[0] + '-auth-token')
+        
+        const { data: { session } } = await supabase.auth.getSession()
+        if (mounted) {
+          setUser(session?.user ?? null)
+          if (loading) setLoading(false) // Only update if we were loading
+        }
+      } catch (error) {
+        console.error('Error getting session:', error)
+        if (mounted) {
+          setUser(null)
+          if (loading) setLoading(false)
+        }
+      }
     }
 
+    // Don't block - get session in background
     getInitialSession()
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        setUser(session?.user ?? null)
-        setLoading(false)
+        if (mounted) {
+          setUser(session?.user ?? null)
+          if (loading) setLoading(false)
+        }
       }
     )
 
-    return () => subscription.unsubscribe()
-  }, [supabase.auth])
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
+  }, [supabase.auth, loading])
 
   const signInWithEmail = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({
@@ -41,10 +64,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const signUpWithEmail = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
     })
+    
+    // If signup successful and user is created, trigger onboarding
+    if (!error && data.user) {
+      // Create user record in users table
+      const { error: userError } = await supabase
+        .from('users')
+        .insert({
+          id: data.user.id,
+          verified: false,
+          joined_classroom: false
+        })
+      
+      if (userError) {
+        console.error('Error creating user record:', userError)
+      }
+      
+      // Trigger onboarding modal
+      setOnboardingUserId(data.user.id)
+      setShowOnboarding(true)
+    }
+    
     return { error }
   }
 
@@ -95,6 +139,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { error }
   }
 
+  const closeOnboarding = () => {
+    setShowOnboarding(false)
+    setOnboardingUserId(null)
+  }
+
   const value: AuthContextType = {
     user,
     loading,
@@ -102,6 +151,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signUpWithEmail,
     signInWithGoogle,
     signOut,
+    showOnboarding,
+    onboardingUserId,
+    closeOnboarding,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

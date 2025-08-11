@@ -1,24 +1,28 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import React, { useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Download, Share2, Instagram, MessageCircle, Sparkles, Edit, Camera, Users } from 'lucide-react'
+import { Download, Share2, Instagram, MessageCircle, Sparkles, Edit, Camera, Users, LogIn } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { useAuth } from '@/lib/contexts/auth-context'
+import { AuthModal } from '@/components/auth-modal'
+import { toast } from 'sonner'
 import html2canvas from 'html2canvas'
 
 interface SchedulePeriod {
-  period: number
-  time: string
+  period_number: number
+  start_time: string
+  end_time: string
   subject: string
   teacher: string
-  room?: string
-  mood?: string
-  note?: string
+  room?: string | null
+  mood?: string | null
+  note?: string | null
 }
 
 interface Student {
@@ -35,6 +39,7 @@ interface ScheduleDisplayProps {
   student: Student | null
   onSave: () => void
   uploadedImage: string | null
+  isParsing?: boolean
 }
 
 const MOOD_EMOJIS = [
@@ -46,12 +51,20 @@ const MOOD_EMOJIS = [
   { emoji: '😴', label: 'sleepy', color: 'bg-indigo-100 text-indigo-600' },
 ]
 
-export default function ScheduleDisplay({ schedule, student, onSave, uploadedImage }: ScheduleDisplayProps) {
+export default function ScheduleDisplay({ schedule, student, onSave, uploadedImage, isParsing = false }: ScheduleDisplayProps) {
   const [scheduleData, setScheduleData] = useState(schedule.periods)
   const [editingPeriod, setEditingPeriod] = useState<number | null>(null)
   const [tempNote, setTempNote] = useState('')
   const [showExportCard, setShowExportCard] = useState(false)
+  const [showAuthModal, setShowAuthModal] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   const exportCardRef = useRef<HTMLDivElement>(null)
+  const { user } = useAuth()
+
+  // Update schedule data when new parsed data arrives
+  React.useEffect(() => {
+    setScheduleData(schedule.periods)
+  }, [schedule.periods])
 
   const updateMood = (periodIndex: number, mood: string) => {
     setScheduleData(prev => 
@@ -105,8 +118,72 @@ export default function ScheduleDisplay({ schedule, student, onSave, uploadedIma
     }
   }
 
+  const handleSaveSchedule = async () => {
+    if (!user) {
+      // Show auth modal if user is not authenticated
+      setShowAuthModal(true)
+      return
+    }
+
+    if (!student) {
+      toast.error('Please select a student profile first')
+      return
+    }
+
+    setIsSaving(true)
+    try {
+      const response = await fetch('/api/save-schedule', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          student,
+          schedule: {
+            periods: scheduleData
+          }
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to save schedule')
+      }
+
+      const result = await response.json()
+      
+      if (result.success) {
+        toast.success(`Schedule saved! Created ${result.classesProcessed} class records.`)
+        onSave() // Continue to classmate discovery
+      } else {
+        throw new Error(result.error || 'Failed to save schedule')
+      }
+    } catch (error) {
+      console.error('Error saving schedule:', error)
+      toast.error('Failed to save schedule. Please try again.')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
   return (
     <div className="max-w-2xl mx-auto space-y-6 py-8">
+      {/* AI Parsing Banner */}
+      {isParsing && (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-gradient-to-r from-blue-100 to-purple-100 border border-blue-200 rounded-xl p-4 mb-6"
+        >
+          <div className="flex items-center space-x-3">
+            <div className="animate-spin w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full" />
+            <div>
+              <h4 className="font-medium text-blue-900">AI is reading your schedule...</h4>
+              <p className="text-sm text-blue-700">We'll update this automatically when done!</p>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
       {/* Header */}
       <div className="text-center">
         <motion.div
@@ -131,21 +208,44 @@ export default function ScheduleDisplay({ schedule, student, onSave, uploadedIma
 
       {/* Schedule Grid */}
       <div className="space-y-3">
-        {scheduleData.map((period, index) => (
-          <motion.div
-            key={period.period}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.1 }}
-          >
+        {isParsing ? (
+          // Loading placeholders
+          Array.from({ length: 6 }).map((_, index) => (
+            <motion.div
+              key={`loading-${index}`}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: index * 0.1 }}
+            >
+              <Card className="overflow-hidden hover:shadow-md transition-shadow animate-pulse">
+                <CardContent className="p-0">
+                  <div className="flex items-center">
+                    <div className="bg-gray-200 p-4 min-w-[100px] h-[72px]" />
+                    <div className="flex-1 p-4">
+                      <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
+                      <div className="h-3 bg-gray-200 rounded w-1/2" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          ))
+        ) : (
+          scheduleData.map((period, index) => (
+            <motion.div
+              key={`period-${period.period_number || index}`}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: index * 0.1 }}
+            >
             <Card className="overflow-hidden hover:shadow-md transition-shadow">
               <CardContent className="p-0">
                 <div className="flex items-center">
                   {/* Period & Time */}
                   <div className="bg-gradient-to-br from-green-500 to-blue-500 text-white p-4 min-w-[100px]">
                     <div className="text-center">
-                      <div className="text-lg font-bold">{period.period}</div>
-                      <div className="text-xs opacity-90">{period.time}</div>
+                      <div className="text-lg font-bold">{period.period_number}</div>
+                      <div className="text-xs opacity-90">{period.start_time}-{period.end_time}</div>
                     </div>
                   </div>
 
@@ -276,14 +376,46 @@ export default function ScheduleDisplay({ schedule, student, onSave, uploadedIma
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.5 }}
       >
-        <Button
-          onClick={onSave}
-          className="w-full h-12 bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white font-semibold"
-        >
-          <Users className="h-4 w-4 mr-2" />
-          Find My Classmates
-          <Sparkles className="h-4 w-4 ml-2" />
-        </Button>
+        {!user ? (
+          <div className="space-y-3">
+            <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+              <div className="flex items-center justify-center space-x-2 text-blue-700 mb-2">
+                <LogIn className="h-4 w-4" />
+                <span className="text-sm font-medium">Create account to continue</span>
+              </div>
+              <p className="text-xs text-blue-600 text-center">
+                Save your schedule and find classmates
+              </p>
+            </div>
+            <Button
+              onClick={() => setShowAuthModal(true)}
+              className="w-full h-12 bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white font-semibold"
+            >
+              <LogIn className="h-4 w-4 mr-2" />
+              Create Account & Find Classmates
+              <Sparkles className="h-4 w-4 ml-2" />
+            </Button>
+          </div>
+        ) : (
+          <Button
+            onClick={handleSaveSchedule}
+            disabled={isSaving}
+            className="w-full h-12 bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white font-semibold"
+          >
+            {isSaving ? (
+              <>
+                <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2" />
+                Saving Schedule...
+              </>
+            ) : (
+              <>
+                <Users className="h-4 w-4 mr-2" />
+                Save & Find My Classmates
+                <Sparkles className="h-4 w-4 ml-2" />
+              </>
+            )}
+          </Button>
+        )}
       </motion.div>
 
       {/* Export Card Modal */}
@@ -326,22 +458,35 @@ export default function ScheduleDisplay({ schedule, student, onSave, uploadedIma
                 {/* Schedule Grid */}
                 <div className="absolute top-24 left-6 right-6 bottom-20 bg-white/10 backdrop-blur-sm rounded-xl p-4 overflow-y-auto">
                   <div className="space-y-2">
-                    {scheduleData.slice(0, 6).map((period) => (
-                      <div key={period.period} className="bg-white/20 rounded-lg p-3">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <div className="text-white font-medium text-sm">
-                              {period.period}. {period.subject}
-                            </div>
-                            <div className="text-white/80 text-xs">
-                              {period.teacher} • {period.time}
+                    {isParsing ? (
+                      // Loading placeholders
+                      Array.from({ length: 6 }).map((_, index) => (
+                        <div key={`loading-${index}`} className="bg-white/20 rounded-lg p-3">
+                          <div className="flex items-center justify-between">
+                            <div className="w-full">
+                              <div className="h-4 bg-white/30 rounded w-3/4 mb-2" />
+                              <div className="h-3 bg-white/30 rounded w-1/2" />
                             </div>
                           </div>
-                          {period.mood && (
-                            <span className="text-lg">{period.mood}</span>
-                          )}
                         </div>
-                      </div>
+                      ))
+                    ) : (
+                      scheduleData.slice(0, 6).map((period, index) => (
+                        <div key={`period-${period.period_number || index}`} className="bg-white/20 rounded-lg p-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="text-white font-medium text-sm">
+                                {period.period_number}. {period.subject}
+                              </div>
+                              <div className="text-white/80 text-xs">
+                                {period.teacher} • {period.start_time}-{period.end_time}
+                              </div>
+                            </div>
+                            {period.mood && (
+                              <span className="text-lg">{period.mood}</span>
+                            )}
+                          </div>
+                        </div>
                     ))}
                   </div>
                 </div>
@@ -374,6 +519,13 @@ export default function ScheduleDisplay({ schedule, student, onSave, uploadedIma
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Auth Modal for non-authenticated users */}
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        defaultTab="signup"
+      />
     </div>
   )
 }

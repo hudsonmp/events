@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useAuth } from "@/lib/contexts/auth-context"
+import { OnboardingModal } from "@/components/onboarding-modal"
 import { toast } from "sonner"
 import { Mail, Eye, EyeOff } from "lucide-react"
 
@@ -21,7 +22,7 @@ export function AuthModal({ isOpen, onClose, defaultTab = "signin" }: AuthModalP
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
-  const { signInWithEmail, signUpWithEmail, signInWithGoogle } = useAuth()
+  const { signInWithEmail, signUpWithEmail, signInWithGoogle, showOnboarding, onboardingUserId, closeOnboarding } = useAuth()
 
   const handleEmailAuth = async (mode: "signin" | "signup") => {
     if (!email || !password) {
@@ -37,10 +38,21 @@ export function AuthModal({ isOpen, onClose, defaultTab = "signin" }: AuthModalP
     if (error) {
       toast.error(error.message)
     } else {
-      toast.success(mode === "signin" ? "Signed in successfully!" : "Account created successfully!")
-      onClose()
-      setEmail("")
-      setPassword("")
+      if (mode === "signin") {
+        toast.success("Signed in successfully!")
+        onClose()
+        setEmail("")
+        setPassword("")
+      } else {
+        // For signup, don't close modal yet - onboarding will handle it
+        toast.success("Account created! Let's set up your profile.")
+        setEmail("")
+        setPassword("")
+        // Auth modal will close when onboarding starts
+        if (showOnboarding) {
+          onClose()
+        }
+      }
     }
     setLoading(false)
   }
@@ -63,8 +75,9 @@ export function AuthModal({ isOpen, onClose, defaultTab = "signin" }: AuthModalP
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md border-none bg-gradient-to-br from-emerald-900 via-emerald-800 to-amber-800 text-white shadow-2xl">
+    <>
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent className="sm:max-w-md border-none bg-gradient-to-br from-emerald-900 via-emerald-800 to-amber-800 text-white shadow-2xl">
         <DialogHeader>
           <DialogTitle className="text-center text-xl font-bold bg-gradient-to-r from-emerald-100 to-amber-100 bg-clip-text text-transparent">
             Welcome to PHHS Events
@@ -227,7 +240,17 @@ export function AuthModal({ isOpen, onClose, defaultTab = "signin" }: AuthModalP
           </svg>
           Continue with Google
         </Button>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+
+      {/* Onboarding Modal */}
+      {showOnboarding && onboardingUserId && (
+        <OnboardingModal
+          isOpen={showOnboarding}
+          onClose={closeOnboarding}
+          userId={onboardingUserId}
+        />
+      )}
+    </>
   )
 } 

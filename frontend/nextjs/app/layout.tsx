@@ -7,6 +7,7 @@ import { AuthProvider } from "@/lib/contexts/auth-context"
 import { Toaster } from "@/components/ui/sonner"
 import { ConditionalHeader } from "@/components/conditional-header"
 import { BottomNavigation } from "@/components/navigation"
+import { ExtensionGuardProvider } from "@/components/extension-guard-provider"
 
 
 const inter = Inter({ subsets: ["latin"] })
@@ -25,14 +26,19 @@ export default function RootLayout({
   return (
     <html lang="en" className="light">
       <body className={cn("min-h-screen bg-white font-sans antialiased overflow-x-hidden", inter.className)} style={{ overscrollBehavior: 'none', scrollBehavior: 'auto' }} suppressHydrationWarning={true}>
-        <AuthProvider>
-          <div className="relative flex min-h-screen flex-col">
-            <ConditionalHeader />
-            <main className="flex-1 touch-pan-y pb-16 md:pb-0" style={{ overscrollBehavior: 'none' }}>{children}</main>
-            <BottomNavigation />
-          </div>
-          <Toaster />
-        </AuthProvider>
+        <ExtensionGuardProvider>
+          <AuthProvider>
+            <div className="bg-gradient-to-r from-green-600 to-yellow-500 text-white text-center py-1 text-sm font-medium">
+              Happy 1st Day Patriots! 🎉
+            </div>
+            <div className="relative flex min-h-screen flex-col">
+              <ConditionalHeader />
+              <main className="flex-1 touch-pan-y pb-16 md:pb-0" style={{ overscrollBehavior: 'none' }}>{children}</main>
+              <BottomNavigation />
+            </div>
+            <Toaster />
+          </AuthProvider>
+        </ExtensionGuardProvider>
       </body>
     </html>
   )
