@@ -239,7 +239,7 @@ export function BottomNavigation() {
   const pathname = usePathname()
 
   // Only show bottom navigation on /events routes
-  if (!pathname.startsWith("/events")) {
+  if (!pathname || !pathname.startsWith("/events")) {
     return null
   }
 

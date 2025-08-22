@@ -8,7 +8,7 @@ export function ConditionalHeader() {
   const pathname = usePathname()
   
   // Only show header on /events routes
-  if (!pathname.startsWith("/events")) {
+  if (!pathname || !pathname.startsWith("/events")) {
     return null
   }
 
