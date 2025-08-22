@@ -64,7 +64,7 @@ export default function MyEventsPage() {
 
   useEffect(() => {
     if (!loading && !user) {
-      router.push("/")
+      router.push("/events")
       return
     }
 

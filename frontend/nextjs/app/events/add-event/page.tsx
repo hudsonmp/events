@@ -12,7 +12,7 @@ export default function AddEventPage() {
 
   useEffect(() => {
     if (!loading && !user) {
-      router.push("/")
+      router.push("/events")
     }
   }, [user, loading, router])
 

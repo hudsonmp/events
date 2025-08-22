@@ -7,6 +7,7 @@ import { TrendingEvents } from "@/components/trending-events"
 import { CategoriesSection } from "@/components/categories-section"
 import { PopularTags } from "@/components/popular-tags"
 import { MyEventsHorizontal } from "@/components/my-events-horizontal"
+import { EventList } from "@/components/event-list"
 import { Button } from "@/components/ui/button"
 import { Home } from "lucide-react"
 import Link from "next/link"
@@ -130,9 +131,9 @@ export default function HomePage() {
   }
 
   return (
-    <section className="w-full min-h-screen bg-white">
-      {/* Header */}
-      <div className="px-4 pt-6 pb-2">
+    <section className="w-full bg-white">
+      {/* Header - Mobile Only */}
+      <div className="lg:hidden px-4 pt-6 pb-2">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Discover</h1>
@@ -143,6 +144,23 @@ export default function HomePage() {
               <Home className="h-5 w-5" />
             </Button>
           </Link>
+        </div>
+      </div>
+
+      {/* Header - Desktop Only */}
+      <div className="hidden lg:block px-6 pt-6 pb-4">
+        <div className="max-w-screen-2xl mx-auto">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">Discover Events</h1>
+              <p className="text-gray-600">Find and join events at Patrick Henry High School</p>
+            </div>
+            <Link href="/">
+              <Button variant="ghost" size="icon" className="text-slate-600 hover:text-slate-800">
+                <Home className="h-5 w-5" />
+              </Button>
+            </Link>
+          </div>
         </div>
       </div>
 
@@ -182,32 +200,10 @@ export default function HomePage() {
       </div>
       
       {/* Desktop Layout */}
-      <div className="hidden lg:flex gap-6 max-w-screen-2xl mx-auto p-4">
-        {/* Main Content - 2/3 width */}
-        <div className="flex-1 max-w-none space-y-2">
-          {/* Trending Events */}
-          <TrendingEvents 
-            initialEvents={trendingEvents} 
-            selectedCategoryId={selectedCategoryId}
-            selectedCategoryName={selectedCategoryName}
-            selectedTag={selectedTag}
-            onClearFilter={handleClearFilter}
-          />
-          
-          {/* Categories */}
-          <CategoriesSection 
-            onCategoryClick={handleCategoryClick}
-            selectedCategoryId={selectedCategoryId}
-          />
-          
-          {/* Popular Tags */}
-          <PopularTags 
-            onTagClick={handleTagClick}
-            selectedTag={selectedTag}
-          />
-          
-          {/* My Events */}
-          <MyEventsHorizontal />
+      <div className="hidden lg:flex gap-6 max-w-screen-2xl mx-auto px-6 pb-6">
+        {/* Events Feed - 2/3 width */}
+        <div className="flex-1 max-w-none">
+          <EventList initialEvents={trendingEvents} />
         </div>
         
         {/* Calendar Sidebar - 1/3 width */}

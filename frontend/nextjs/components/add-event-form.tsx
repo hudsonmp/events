@@ -258,7 +258,7 @@ export function AddEventForm() {
       }
 
       toast.success("Event created successfully!")
-      router.push("/")
+      router.push("/events")
       
     } catch (error: any) {
       console.error("Error creating event:", error)
